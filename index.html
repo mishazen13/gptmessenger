@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Liquid Glass Messenger</title>
+  <style>
+    :root {
+      --bg-1: #0f172a;
+      --bg-2: #1d4ed8;
+      --glass: rgba(255, 255, 255, 0.14);
+      --glass-strong: rgba(255, 255, 255, 0.22);
+      --text: #ecfeff;
+      --muted: #cbd5e1;
+      --accent: #22d3ee;
+      --danger: #fb7185;
+      --ok: #34d399;
+      --shadow: 0 18px 40px rgba(2, 6, 23, 0.45);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, Segoe UI, Roboto, Arial, sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at 15% 10%, #2563eb 0%, transparent 35%),
+                  radial-gradient(circle at 85% 20%, #0891b2 0%, transparent 35%),
+                  radial-gradient(circle at 50% 100%, #312e81 0%, transparent 45%),
+                  linear-gradient(120deg, var(--bg-1), #0b1120 50%, #111827);
+      padding: 18px;
+    }
+
+    .glass {
+      background: var(--glass);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 18px;
+      backdrop-filter: blur(16px) saturate(140%);
+      -webkit-backdrop-filter: blur(16px) saturate(140%);
+      box-shadow: var(--shadow);
+    }
+
+    .hidden { display: none !important; }
+
+    .auth-wrap {
+      max-width: 440px;
+      margin: 3rem auto;
+      padding: 1.2rem;
+    }
+
+    h1, h2, h3 { margin: 0 0 .6rem; }
+    p { margin: .25rem 0; color: var(--muted); }
+
+    input, button, select, textarea {
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.12);
+      color: white;
+      padding: .65rem .8rem;
+      width: 100%;
+      outline: none;
+    }
+
+    textarea { resize: vertical; min-height: 62px; }
+
+    input::placeholder, textarea::placeholder { color: #cbd5e1; }
+
+    button {
+      cursor: pointer;
+      transition: .2s transform, .2s background;
+      background: rgba(34, 211, 238, 0.22);
+      font-weight: 600;
+    }
+
+    button:hover { transform: translateY(-1px); background: rgba(34, 211, 238, 0.32); }
+    button.danger { background: rgba(251, 113, 133, 0.25); }
+    button.secondary { background: rgba(148, 163, 184, 0.2); }
+
+    .row { display: flex; gap: .55rem; }
+    .col { display: flex; flex-direction: column; gap: .55rem; }
+
+    #app {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 14px;
+      min-height: calc(100vh - 36px);
+    }
+
+    .left-panel, .chat-panel {
+      padding: 1rem;
+      overflow: hidden;
+    }
+
+    .section-title { margin-top: 1rem; font-size: .95rem; color: #c7d2fe; }
+
+    .list {
+      margin: .45rem 0;
+      display: flex;
+      flex-direction: column;
+      gap: .45rem;
+      max-height: 24vh;
+      overflow: auto;
+      padding-right: .25rem;
+    }
+
+    .item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: .45rem;
+      padding: .55rem .65rem;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.17);
+      border-radius: 12px;
+      cursor: pointer;
+    }
+
+    .item.active { border-color: var(--accent); background: rgba(34, 211, 238, 0.2); }
+    .item .meta { font-size: .8rem; color: #bae6fd; }
+
+    .chat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: .6rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+      padding-bottom: .7rem;
+      margin-bottom: .7rem;
+    }
+
+    .messages {
+      height: 56vh;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: .5rem;
+      padding-right: .4rem;
+    }
+
+    .message {
+      max-width: 76%;
+      padding: .65rem .7rem;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.2);
+      background: rgba(255,255,255,.1);
+    }
+
+    .message.self {
+      margin-left: auto;
+      background: rgba(34, 211, 238, 0.25);
+      border-color: rgba(34, 211, 238, 0.5);
+    }
+
+    .message .top {
+      display: flex;
+      justify-content: space-between;
+      font-size: .78rem;
+      color: #bae6fd;
+      margin-bottom: .3rem;
+    }
+
+    .reply-box {
+      border-left: 3px solid #7dd3fc;
+      padding-left: .45rem;
+      font-size: .84rem;
+      color: #dbeafe;
+      margin-bottom: .35rem;
+      opacity: .95;
+    }
+
+    .composer {
+      margin-top: .8rem;
+      display: flex;
+      flex-direction: column;
+      gap: .5rem;
+    }
+
+    .status { min-height: 1.2rem; font-size: .9rem; color: var(--ok); }
+
+    @media (max-width: 980px) {
+      #app { grid-template-columns: 1fr; }
+      .messages { height: 42vh; }
+    }
+  </style>
+</head>
+<body>
+  <section id="auth" class="auth-wrap glass">
+    <h1>💎 Liquid Glass Messenger</h1>
+    <p>Регистрация, вход, друзья, группы и ответы на сообщения — всё в одном HTML.</p>
+    <div class="row" style="margin:.7rem 0;">
+      <button id="showLogin" class="secondary">Вход</button>
+      <button id="showRegister">Регистрация</button>
+    </div>
+
+    <div id="loginBox" class="col">
+      <input id="loginUser" placeholder="Логин" />
+      <input id="loginPass" type="password" placeholder="Пароль" />
+      <button id="loginBtn">Войти</button>
+    </div>
+
+    <div id="registerBox" class="col hidden">
+      <input id="regUser" placeholder="Новый логин" />
+      <input id="regPass" type="password" placeholder="Новый пароль" />
+      <button id="registerBtn">Создать аккаунт</button>
+    </div>
+
+    <p id="authMsg"></p>
+  </section>
+
+  <main id="app" class="hidden">
+    <aside class="left-panel glass">
+      <div class="chat-header">
+        <div>
+          <h3 id="meName">Пользователь</h3>
+          <p>онлайн локально</p>
+        </div>
+        <button id="logoutBtn" class="danger" style="width:auto;">Выйти</button>
+      </div>
+
+      <div class="section-title">👥 Друзья</div>
+      <div class="row">
+        <input id="friendInput" placeholder="Логин друга" />
+        <button id="addFriendBtn" style="width:auto;">+</button>
+      </div>
+      <div id="friendsList" class="list"></div>
+
+      <div class="section-title">🫂 Группы</div>
+      <div class="col">
+        <input id="groupName" placeholder="Название группы" />
+        <input id="groupMembers" placeholder="Участники через запятую (логины)" />
+        <button id="createGroupBtn">Создать группу</button>
+      </div>
+      <div id="groupsList" class="list"></div>
+    </aside>
+
+    <section class="chat-panel glass">
+      <div class="chat-header">
+        <div>
+          <h2 id="chatTitle">Выберите чат</h2>
+          <p id="chatSubtitle">Друзья или группы слева</p>
+        </div>
+      </div>
+
+      <div id="messages" class="messages"></div>
+
+      <div id="replyPreview" class="reply-box hidden"></div>
+
+      <div class="composer">
+        <textarea id="messageInput" placeholder="Введите сообщение..."></textarea>
+        <div class="row">
+          <button id="sendBtn">Отправить</button>
+          <button id="cancelReplyBtn" class="secondary hidden">Отменить ответ</button>
+        </div>
+      </div>
+
+      <div id="status" class="status"></div>
+    </section>
+  </main>
+
+  <script>
+    const DB_KEY = 'lgm_db_v1';
+    const SESSION_KEY = 'lgm_session_v1';
+
+    const byId = (id) => document.getElementById(id);
+    const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+    const esc = (s) => String(s).replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+    let state = {
+      db: loadDb(),
+      session: JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'),
+      selectedChat: null,
+      replyTo: null,
+    };
+
+    function loadDb() {
+      const raw = localStorage.getItem(DB_KEY);
+      if (raw) return JSON.parse(raw);
+      const demo = { users: [], groups: [], messages: [] };
+      localStorage.setItem(DB_KEY, JSON.stringify(demo));
+      return demo;
+    }
+
+    function saveDb() { localStorage.setItem(DB_KEY, JSON.stringify(state.db)); }
+
+    function currentUser() {
+      if (!state.session) return null;
+      return state.db.users.find((u) => u.id === state.session.userId) || null;
+    }
+
+    function setMsg(text, ok = true, auth = false) {
+      const el = auth ? byId('authMsg') : byId('status');
+      el.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+      el.textContent = text;
+      setTimeout(() => { if (el.textContent === text) el.textContent = ''; }, 3500);
+    }
+
+    function switchAuth(isLogin) {
+      byId('loginBox').classList.toggle('hidden', !isLogin);
+      byId('registerBox').classList.toggle('hidden', isLogin);
+    }
+
+    function register() {
+      const username = byId('regUser').value.trim();
+      const password = byId('regPass').value.trim();
+      if (username.length < 3 || password.length < 3) return setMsg('Логин и пароль: минимум 3 символа.', false, true);
+      if (state.db.users.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
+        return setMsg('Такой логин уже существует.', false, true);
+      }
+      state.db.users.push({ id: uid(), username, password, friends: [] });
+      saveDb();
+      setMsg('Аккаунт создан. Теперь войдите.', true, true);
+      switchAuth(true);
+    }
+
+    function login() {
+      const username = byId('loginUser').value.trim();
+      const password = byId('loginPass').value.trim();
+      const user = state.db.users.find((u) => u.username === username && u.password === password);
+      if (!user) return setMsg('Неверный логин или пароль.', false, true);
+      state.session = { userId: user.id };
+      localStorage.setItem(SESSION_KEY, JSON.stringify(state.session));
+      bootApp();
+    }
+
+    function logout() {
+      localStorage.removeItem(SESSION_KEY);
+      state.session = null;
+      state.selectedChat = null;
+      byId('app').classList.add('hidden');
+      byId('auth').classList.remove('hidden');
+    }
+
+    function addFriend() {
+      const me = currentUser();
+      const uname = byId('friendInput').value.trim();
+      const other = state.db.users.find((u) => u.username === uname);
+      if (!other || other.id === me.id) return setMsg('Пользователь не найден.', false);
+      if (me.friends.includes(other.id)) return setMsg('Уже в друзьях.', false);
+      me.friends.push(other.id);
+      if (!other.friends.includes(me.id)) other.friends.push(me.id);
+      saveDb();
+      byId('friendInput').value = '';
+      renderLists();
+      setMsg('Друг добавлен.');
+    }
+
+    function removeFriend(friendId) {
+      const me = currentUser();
+      me.friends = me.friends.filter((id) => id !== friendId);
+      const other = state.db.users.find((u) => u.id === friendId);
+      if (other) other.friends = other.friends.filter((id) => id !== me.id);
+      saveDb();
+      renderLists();
+      if (state.selectedChat && state.selectedChat.type === 'user' && state.selectedChat.id === friendId) {
+        state.selectedChat = null;
+        renderChat();
+      }
+      setMsg('Друг удалён.');
+    }
+
+    function createGroup() {
+      const me = currentUser();
+      const name = byId('groupName').value.trim();
+      const raw = byId('groupMembers').value.trim();
+      if (!name) return setMsg('Введите название группы.', false);
+      const names = raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+      const memberIds = names.map((n) => {
+        const user = state.db.users.find((u) => u.username === n);
+        return user ? user.id : null;
+      }).filter(Boolean);
+
+      const group = { id: uid(), name, ownerId: me.id, members: Array.from(new Set([me.id, ...memberIds])) };
+      state.db.groups.push(group);
+      saveDb();
+      byId('groupName').value = '';
+      byId('groupMembers').value = '';
+      renderLists();
+      setMsg('Группа создана.');
+    }
+
+    function removeGroup(groupId) {
+      const me = currentUser();
+      const group = state.db.groups.find((g) => g.id === groupId);
+      if (!group) return;
+      if (group.ownerId === me.id) {
+        state.db.groups = state.db.groups.filter((g) => g.id !== groupId);
+        setMsg('Группа удалена владельцем.');
+      } else {
+        group.members = group.members.filter((m) => m !== me.id);
+        setMsg('Вы вышли из группы.');
+      }
+      saveDb();
+      renderLists();
+      if (state.selectedChat && state.selectedChat.type === 'group' && state.selectedChat.id === groupId) {
+        state.selectedChat = null;
+        renderChat();
+      }
+    }
+
+    function selectChat(type, id) {
+      state.selectedChat = { type, id };
+      state.replyTo = null;
+      renderLists();
+      renderChat();
+    }
+
+    function chatMessages() {
+      const me = currentUser();
+      if (!state.selectedChat) return [];
+      return state.db.messages.filter((m) => {
+        if ((m.deletedFor || []).includes(me.id)) return false;
+        if (state.selectedChat.type === 'user') {
+          const uid = state.selectedChat.id;
+          return m.toType === 'user' && (
+            (m.from === me.id && m.toId === uid) ||
+            (m.from === uid && m.toId === me.id)
+          );
+        }
+        return m.toType === 'group' && m.toId === state.selectedChat.id;
+      }).sort((a,b) => a.createdAt - b.createdAt);
+    }
+
+    function sendMessage() {
+      const me = currentUser();
+      if (!state.selectedChat) return setMsg('Сначала выберите чат.', false);
+      const text = byId('messageInput').value.trim();
+      if (!text) return;
+      const payload = {
+        id: uid(),
+        from: me.id,
+        toType: state.selectedChat.type,
+        toId: state.selectedChat.id,
+        text,
+        replyTo: state.replyTo,
+        deletedFor: [],
+        createdAt: Date.now(),
+      };
+      state.db.messages.push(payload);
+      state.replyTo = null;
+      byId('replyPreview').classList.add('hidden');
+      byId('cancelReplyBtn').classList.add('hidden');
+      byId('messageInput').value = '';
+      saveDb();
+      renderChat();
+    }
+
+    function deleteMessage(messageId) {
+      const me = currentUser();
+      const msg = state.db.messages.find((m) => m.id === messageId);
+      if (!msg) return;
+      msg.deletedFor = Array.from(new Set([...(msg.deletedFor || []), me.id]));
+      saveDb();
+      renderChat();
+    }
+
+    function startReply(messageId) {
+      state.replyTo = messageId;
+      const msg = state.db.messages.find((m) => m.id === messageId);
+      if (!msg) return;
+      byId('replyPreview').innerHTML = `Ответ на: <b>${esc(msg.text.slice(0, 80))}</b>`;
+      byId('replyPreview').classList.remove('hidden');
+      byId('cancelReplyBtn').classList.remove('hidden');
+      byId('messageInput').focus();
+    }
+
+    function cancelReply() {
+      state.replyTo = null;
+      byId('replyPreview').classList.add('hidden');
+      byId('cancelReplyBtn').classList.add('hidden');
+    }
+
+    function userName(id) {
+      const u = state.db.users.find((x) => x.id === id);
+      return u ? u.username : 'Unknown';
+    }
+
+    function renderLists() {
+      const me = currentUser();
+      byId('meName').textContent = me.username;
+
+      const fWrap = byId('friendsList');
+      fWrap.innerHTML = '';
+      me.friends.map((id) => state.db.users.find((u) => u.id === id)).filter(Boolean).forEach((f) => {
+        const div = document.createElement('div');
+        div.className = 'item' + (state.selectedChat?.type === 'user' && state.selectedChat?.id === f.id ? ' active' : '');
+        div.innerHTML = `<div><div>${esc(f.username)}</div><div class="meta">личный чат</div></div>
+          <div class="row" style="width:auto;"><button class="secondary" data-chat="${f.id}" style="width:auto;">Открыть</button><button class="danger" data-remove-friend="${f.id}" style="width:auto;">✕</button></div>`;
+        fWrap.appendChild(div);
+      });
+
+      const gWrap = byId('groupsList');
+      gWrap.innerHTML = '';
+      state.db.groups.filter((g) => g.members.includes(me.id)).forEach((g) => {
+        const members = g.members.map(userName).join(', ');
+        const div = document.createElement('div');
+        div.className = 'item' + (state.selectedChat?.type === 'group' && state.selectedChat?.id === g.id ? ' active' : '');
+        div.innerHTML = `<div><div>${esc(g.name)}</div><div class="meta">${esc(members)}</div></div>
+          <div class="row" style="width:auto;"><button class="secondary" data-group-chat="${g.id}" style="width:auto;">Открыть</button><button class="danger" data-remove-group="${g.id}" style="width:auto;">✕</button></div>`;
+        gWrap.appendChild(div);
+      });
+    }
+
+    function renderChat() {
+      const me = currentUser();
+      const title = byId('chatTitle');
+      const sub = byId('chatSubtitle');
+      const messages = byId('messages');
+      messages.innerHTML = '';
+      if (!state.selectedChat) {
+        title.textContent = 'Выберите чат';
+        sub.textContent = 'Друзья или группы слева';
+        return;
+      }
+
+      if (state.selectedChat.type === 'user') {
+        title.textContent = 'Чат с ' + userName(state.selectedChat.id);
+        sub.textContent = 'Личный диалог';
+      } else {
+        const g = state.db.groups.find((x) => x.id === state.selectedChat.id);
+        title.textContent = g ? `Группа: ${g.name}` : 'Группа';
+        sub.textContent = g ? `Участники: ${g.members.map(userName).join(', ')}` : '';
+      }
+
+      chatMessages().forEach((m) => {
+        const item = document.createElement('div');
+        item.className = 'message' + (m.from === me.id ? ' self' : '');
+        const reply = m.replyTo ? state.db.messages.find((x) => x.id === m.replyTo) : null;
+        item.innerHTML = `
+          <div class="top"><span>${esc(userName(m.from))}</span><span>${new Date(m.createdAt).toLocaleTimeString()}</span></div>
+          ${reply ? `<div class="reply-box">↪ ${esc(userName(reply.from))}: ${esc(reply.text.slice(0, 80))}</div>` : ''}
+          <div>${esc(m.text)}</div>
+          <div class="row" style="margin-top:.45rem;">
+            <button class="secondary" data-reply="${m.id}" style="width:auto;">Ответить</button>
+            <button class="danger" data-del-msg="${m.id}" style="width:auto;">Удалить</button>
+          </div>
+        `;
+        messages.appendChild(item);
+      });
+
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function bindEvents() {
+      byId('showLogin').onclick = () => switchAuth(true);
+      byId('showRegister').onclick = () => switchAuth(false);
+      byId('registerBtn').onclick = register;
+      byId('loginBtn').onclick = login;
+      byId('logoutBtn').onclick = logout;
+      byId('addFriendBtn').onclick = addFriend;
+      byId('createGroupBtn').onclick = createGroup;
+      byId('sendBtn').onclick = sendMessage;
+      byId('cancelReplyBtn').onclick = cancelReply;
+
+      byId('friendsList').addEventListener('click', (e) => {
+        const t = e.target;
+        if (t.dataset.chat) selectChat('user', t.dataset.chat);
+        if (t.dataset.removeFriend) removeFriend(t.dataset.removeFriend);
+      });
+
+      byId('groupsList').addEventListener('click', (e) => {
+        const t = e.target;
+        if (t.dataset.groupChat) selectChat('group', t.dataset.groupChat);
+        if (t.dataset.removeGroup) removeGroup(t.dataset.removeGroup);
+      });
+
+      byId('messages').addEventListener('click', (e) => {
+        const t = e.target;
+        if (t.dataset.reply) startReply(t.dataset.reply);
+        if (t.dataset.delMsg) deleteMessage(t.dataset.delMsg);
+      });
+
+      byId('messageInput').addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') sendMessage();
+      });
+    }
+
+    function bootApp() {
+      if (!state.session || !currentUser()) {
+        byId('auth').classList.remove('hidden');
+        byId('app').classList.add('hidden');
+        return;
+      }
+      byId('auth').classList.add('hidden');
+      byId('app').classList.remove('hidden');
+      renderLists();
+      renderChat();
+    }
+
+    bindEvents();
+    bootApp();
+  </script>
+</body>
+</html>
