@@ -17,7 +17,7 @@ constexpr const char *WHITE = "\033[38;5;255m";
 constexpr const char *PANEL = "\033[48;5;238m";
 constexpr const char *GLASS = "\033[48;5;250m";
 
-void clear() { std::cout << "\033[2J\033[H"; }
+void clear() { std::cout << "\033[2J\033[H" << std::flush; }
 
 void sleep_ms(int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
 
@@ -34,7 +34,9 @@ void box(const std::string &title, const std::vector<std::string> &rows) {
         line(r, width);
     }
     std::cout << PANEL << CYAN << "└" << std::string(width - 2, '-') << "┘" << RESET << "\n";
+    std::cout << std::flush;
 }
+
 
 void liquid_glass_header(const std::string &title, const std::string &subtitle) {
     clear();
@@ -44,18 +46,20 @@ void liquid_glass_header(const std::string &title, const std::string &subtitle) 
     std::cout << GLASS << "   " << DIM << WHITE << subtitle << RESET << GLASS;
     std::cout << std::string(std::max(1, 70 - static_cast<int>(subtitle.size())), ' ') << RESET << "\n";
     std::cout << GLASS << "                                                                        " << RESET << "\n\n";
+    std::cout << std::flush;
 }
+
 
 void pulse_animation(const std::string &text) {
     for (int i = 0; i < 3; ++i) {
         std::cout << CYAN << text << std::string(i + 1, '.') << RESET << "\r" << std::flush;
         sleep_ms(140);
     }
-    std::cout << std::string(text.size() + 5, ' ') << "\r";
+    std::cout << std::string(text.size() + 5, ' ') << "\r" << std::flush;
 }
 
 std::string input(const std::string &prompt) {
-    std::cout << CYAN << prompt << RESET;
+    std::cout << CYAN << prompt << RESET << std::flush;
     std::string value;
     std::getline(std::cin, value);
     return value;
