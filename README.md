@@ -59,3 +59,7 @@ cmake --build build
 Ответы сервера: `OK\t...` или `ERR\t...`.
 
 > Для красивого интерфейса клиента нужен терминал с поддержкой ANSI-цветов и UTF-8.
+
+
+### Troubleshooting (Windows)
+If you saw raw sequences like `[2J` and garbled text before, update to this version: the client now initializes terminal support automatically (UTF-8 + VT mode) and falls back to plain text when ANSI is unavailable.

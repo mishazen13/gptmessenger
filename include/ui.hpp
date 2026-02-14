@@ -5,6 +5,7 @@
 
 namespace ui {
 
+void initialize_terminal();
 void clear();
 void sleep_ms(int ms);
 void line(const std::string &text = "", int width = 72);
