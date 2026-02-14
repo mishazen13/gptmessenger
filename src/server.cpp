@@ -4,19 +4,50 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cerrno>
 #include <ctime>
-#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <optional>
 #include <sstream>
 #include <thread>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
+#include <cerrno>
+#include <cstring>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
+
+namespace {
+#ifdef _WIN32
+using socket_t = SOCKET;
+constexpr socket_t invalid_socket = INVALID_SOCKET;
+#else
+using socket_t = int;
+constexpr socket_t invalid_socket = -1;
+#endif
+
+void close_socket(socket_t s) {
+#ifdef _WIN32
+    closesocket(s);
+#else
+    close(s);
+#endif
+}
+
+int last_socket_error() {
+#ifdef _WIN32
+    return WSAGetLastError();
+#else
+    return errno;
+#endif
+}
+} // namespace
 
 MessengerServer::MessengerServer(int port, std::string storage_path) : port_(port), storage_path_(std::move(storage_path)) {}
 
@@ -31,7 +62,11 @@ std::string MessengerServer::timestamp() {
     auto now = std::chrono::system_clock::now();
     std::time_t t = std::chrono::system_clock::to_time_t(now);
     std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &t);
+#else
     localtime_r(&t, &tm);
+#endif
     std::ostringstream os;
     os << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
     return os.str();
@@ -83,9 +118,7 @@ void MessengerServer::load() {
     Storage::load(storage_path_, users_, groups_, dm_, next_message_id_);
 }
 
-void MessengerServer::save() {
-    Storage::save(storage_path_, users_, groups_, dm_, next_message_id_);
-}
+void MessengerServer::save() { Storage::save(storage_path_, users_, groups_, dm_, next_message_id_); }
 
 std::string MessengerServer::handle_command(const std::string &line) {
     auto p = split_tab(line);
@@ -100,38 +133,50 @@ std::string MessengerServer::handle_command(const std::string &line) {
         return "OK\tPONG";
     }
     if (cmd == "REGISTER") {
-        if (p.size() != 3) return "ERR\tusage REGISTER\\tuser\\tpass";
-        if (users_.count(p[1])) return "ERR\tuser exists";
+        if (p.size() != 3)
+            return "ERR\tusage REGISTER\\tuser\\tpass";
+        if (users_.count(p[1]))
+            return "ERR\tuser exists";
         users_[p[1]] = User{p[1], p[2], {}};
         save();
         return "OK\tregistered";
     }
     if (cmd == "LOGIN") {
-        if (p.size() != 3) return "ERR\tusage LOGIN\\tuser\\tpass";
+        if (p.size() != 3)
+            return "ERR\tusage LOGIN\\tuser\\tpass";
         auto it = users_.find(p[1]);
-        if (it == users_.end() || it->second.password != p[2]) return "ERR\tbad credentials";
+        if (it == users_.end() || it->second.password != p[2])
+            return "ERR\tbad credentials";
         return "OK\tlogged";
     }
     if (cmd == "ADD_FRIEND") {
-        if (p.size() != 3) return "ERR\tusage ADD_FRIEND\\tuser\\tpeer";
-        if (!users_.count(p[1]) || !users_.count(p[2]) || p[1] == p[2]) return "ERR\tbad users";
+        if (p.size() != 3)
+            return "ERR\tusage ADD_FRIEND\\tuser\\tpeer";
+        if (!users_.count(p[1]) || !users_.count(p[2]) || p[1] == p[2])
+            return "ERR\tbad users";
         users_[p[1]].friends.insert(p[2]);
         users_[p[2]].friends.insert(p[1]);
         save();
         return "OK\tfriend added";
     }
     if (cmd == "REMOVE_FRIEND") {
-        if (p.size() != 3) return "ERR\tusage REMOVE_FRIEND\\tuser\\tpeer";
-        if (!users_.count(p[1])) return "ERR\tunknown user";
+        if (p.size() != 3)
+            return "ERR\tusage REMOVE_FRIEND\\tuser\\tpeer";
+        if (!users_.count(p[1]))
+            return "ERR\tunknown user";
         users_[p[1]].friends.erase(p[2]);
-        if (users_.count(p[2])) users_[p[2]].friends.erase(p[1]);
+        if (users_.count(p[2]))
+            users_[p[2]].friends.erase(p[1]);
         save();
         return "OK\tfriend removed";
     }
     if (cmd == "CREATE_GROUP") {
-        if (p.size() != 3) return "ERR\tusage CREATE_GROUP\\tuser\\tgroup";
-        if (!users_.count(p[1])) return "ERR\tunknown user";
-        if (groups_.count(p[2])) return "ERR\tgroup exists";
+        if (p.size() != 3)
+            return "ERR\tusage CREATE_GROUP\\tuser\\tgroup";
+        if (!users_.count(p[1]))
+            return "ERR\tunknown user";
+        if (groups_.count(p[2]))
+            return "ERR\tgroup exists";
         Group g;
         g.name = p[2];
         g.members.insert(p[1]);
@@ -140,92 +185,116 @@ std::string MessengerServer::handle_command(const std::string &line) {
         return "OK\tgroup created";
     }
     if (cmd == "JOIN_GROUP") {
-        if (p.size() != 3) return "ERR\tusage JOIN_GROUP\\tuser\\tgroup";
-        if (!users_.count(p[1])) return "ERR\tunknown user";
+        if (p.size() != 3)
+            return "ERR\tusage JOIN_GROUP\\tuser\\tgroup";
+        if (!users_.count(p[1]))
+            return "ERR\tunknown user";
         auto it = groups_.find(p[2]);
-        if (it == groups_.end()) return "ERR\tgroup not found";
+        if (it == groups_.end())
+            return "ERR\tgroup not found";
         it->second.members.insert(p[1]);
         save();
         return "OK\tjoined";
     }
     if (cmd == "SEND_DM") {
-        if (p.size() < 4) return "ERR\tusage SEND_DM\\tfrom\\tto\\ttext";
-        if (!users_.count(p[1]) || !users_.count(p[2])) return "ERR\tunknown user";
-        if (!users_[p[1]].friends.count(p[2])) return "ERR\tnot friends";
+        if (p.size() < 4)
+            return "ERR\tusage SEND_DM\\tfrom\\tto\\ttext";
+        if (!users_.count(p[1]) || !users_.count(p[2]))
+            return "ERR\tunknown user";
+        if (!users_[p[1]].friends.count(p[2]))
+            return "ERR\tnot friends";
         Message m{next_message_id_++, p[1], p[3], timestamp(), std::nullopt};
         dm_[dm_key(p[1], p[2])].push_back(m);
         save();
         return "OK\t" + std::to_string(m.id);
     }
     if (cmd == "REPLY_DM") {
-        if (p.size() < 5) return "ERR\tusage REPLY_DM\\tfrom\\tto\\treply_id\\ttext";
+        if (p.size() < 5)
+            return "ERR\tusage REPLY_DM\\tfrom\\tto\\treply_id\\ttext";
         auto key = dm_key(p[1], p[2]);
         int reply_id = std::stoi(p[3]);
         auto &msgs = dm_[key];
         auto it = std::find_if(msgs.begin(), msgs.end(), [&](const Message &m) { return m.id == reply_id; });
-        if (it == msgs.end()) return "ERR\treply target not found";
+        if (it == msgs.end())
+            return "ERR\treply target not found";
         Message m{next_message_id_++, p[1], p[4], timestamp(), reply_id};
         msgs.push_back(m);
         save();
         return "OK\t" + std::to_string(m.id);
     }
     if (cmd == "DELETE_DM") {
-        if (p.size() != 4) return "ERR\tusage DELETE_DM\\tuser\\tpeer\\tid";
+        if (p.size() != 4)
+            return "ERR\tusage DELETE_DM\\tuser\\tpeer\\tid";
         auto key = dm_key(p[1], p[2]);
         int id = std::stoi(p[3]);
         auto &msgs = dm_[key];
         auto it = std::find_if(msgs.begin(), msgs.end(), [&](const Message &m) { return m.id == id; });
-        if (it == msgs.end()) return "ERR\tmessage not found";
-        if (it->from != p[1]) return "ERR\tonly owner can delete";
+        if (it == msgs.end())
+            return "ERR\tmessage not found";
+        if (it->from != p[1])
+            return "ERR\tonly owner can delete";
         msgs.erase(it);
         save();
         return "OK\tdeleted";
     }
     if (cmd == "GET_DM") {
-        if (p.size() != 3) return "ERR\tusage GET_DM\\tuser\\tpeer";
+        if (p.size() != 3)
+            return "ERR\tusage GET_DM\\tuser\\tpeer";
         auto key = dm_key(p[1], p[2]);
         return "OK\t" + serialize_messages(dm_[key]);
     }
     if (cmd == "SEND_GROUP") {
-        if (p.size() < 4) return "ERR\tusage SEND_GROUP\\tfrom\\tgroup\\ttext";
+        if (p.size() < 4)
+            return "ERR\tusage SEND_GROUP\\tfrom\\tgroup\\ttext";
         auto git = groups_.find(p[2]);
-        if (git == groups_.end()) return "ERR\tgroup not found";
-        if (!git->second.members.count(p[1])) return "ERR\tnot a member";
+        if (git == groups_.end())
+            return "ERR\tgroup not found";
+        if (!git->second.members.count(p[1]))
+            return "ERR\tnot a member";
         Message m{next_message_id_++, p[1], p[3], timestamp(), std::nullopt};
         git->second.messages.push_back(m);
         save();
         return "OK\t" + std::to_string(m.id);
     }
     if (cmd == "REPLY_GROUP") {
-        if (p.size() < 5) return "ERR\tusage REPLY_GROUP\\tfrom\\tgroup\\treply_id\\ttext";
+        if (p.size() < 5)
+            return "ERR\tusage REPLY_GROUP\\tfrom\\tgroup\\treply_id\\ttext";
         auto git = groups_.find(p[2]);
-        if (git == groups_.end()) return "ERR\tgroup not found";
+        if (git == groups_.end())
+            return "ERR\tgroup not found";
         int reply_id = std::stoi(p[3]);
         auto &msgs = git->second.messages;
         auto it = std::find_if(msgs.begin(), msgs.end(), [&](const Message &m) { return m.id == reply_id; });
-        if (it == msgs.end()) return "ERR\treply target not found";
+        if (it == msgs.end())
+            return "ERR\treply target not found";
         Message m{next_message_id_++, p[1], p[4], timestamp(), reply_id};
         msgs.push_back(m);
         save();
         return "OK\t" + std::to_string(m.id);
     }
     if (cmd == "DELETE_GROUP_MSG") {
-        if (p.size() != 4) return "ERR\tusage DELETE_GROUP_MSG\\tuser\\tgroup\\tid";
+        if (p.size() != 4)
+            return "ERR\tusage DELETE_GROUP_MSG\\tuser\\tgroup\\tid";
         auto git = groups_.find(p[2]);
-        if (git == groups_.end()) return "ERR\tgroup not found";
+        if (git == groups_.end())
+            return "ERR\tgroup not found";
         int id = std::stoi(p[3]);
         auto &msgs = git->second.messages;
         auto it = std::find_if(msgs.begin(), msgs.end(), [&](const Message &m) { return m.id == id; });
-        if (it == msgs.end()) return "ERR\tmessage not found";
-        if (it->from != p[1]) return "ERR\tonly owner can delete";
+        if (it == msgs.end())
+            return "ERR\tmessage not found";
+        if (it->from != p[1])
+            return "ERR\tonly owner can delete";
         msgs.erase(it);
         save();
         return "OK\tdeleted";
     }
     if (cmd == "GET_GROUP") {
-        if (p.size() != 2) return "ERR\tusage GET_GROUP\\tgroup";
+        if (p.size() != 2)
+            return "ERR\tusage GET_GROUP\\tgroup";
         auto git = groups_.find(p[1]);
-        if (git == groups_.end()) return "ERR\tgroup not found";
+        if (git == groups_.end())
+            return "ERR\tgroup not found";
         return "OK\t" + serialize_messages(git->second.messages);
     }
 
@@ -235,37 +304,54 @@ std::string MessengerServer::handle_command(const std::string &line) {
 void MessengerServer::run() {
     load();
 
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) {
+#ifdef _WIN32
+    WSADATA wsa_data{};
+    if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+        std::cerr << "WSAStartup failed\n";
+        return;
+    }
+#endif
+
+    socket_t server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd == invalid_socket) {
         std::cerr << "Failed to create socket\n";
+#ifdef _WIN32
+        WSACleanup();
+#endif
         return;
     }
 
     int opt = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&opt), sizeof(opt));
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
     addr.sin_port = htons(static_cast<uint16_t>(port_));
 
     if (bind(server_fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0) {
-        std::cerr << "Bind failed: " << std::strerror(errno) << "\n";
-        close(server_fd);
+        std::cerr << "Bind failed, error code: " << last_socket_error() << "\n";
+        close_socket(server_fd);
+#ifdef _WIN32
+        WSACleanup();
+#endif
         return;
     }
 
     if (listen(server_fd, 16) < 0) {
-        std::cerr << "Listen failed\n";
-        close(server_fd);
+        std::cerr << "Listen failed, error code: " << last_socket_error() << "\n";
+        close_socket(server_fd);
+#ifdef _WIN32
+        WSACleanup();
+#endif
         return;
     }
 
     std::cout << "Messenger server listening on 0.0.0.0:" << port_ << "\n";
 
     while (true) {
-        int client_fd = accept(server_fd, nullptr, nullptr);
-        if (client_fd < 0) {
+        socket_t client_fd = accept(server_fd, nullptr, nullptr);
+        if (client_fd == invalid_socket) {
             continue;
         }
 
@@ -273,7 +359,7 @@ void MessengerServer::run() {
             std::string buffer;
             char temp[1024];
             while (true) {
-                ssize_t n = recv(client_fd, temp, sizeof(temp), 0);
+                int n = static_cast<int>(recv(client_fd, temp, sizeof(temp), 0));
                 if (n <= 0) {
                     break;
                 }
@@ -286,14 +372,14 @@ void MessengerServer::run() {
                     }
                     buffer.erase(0, pos + 1);
                     if (line == "QUIT") {
-                        close(client_fd);
+                        close_socket(client_fd);
                         return;
                     }
                     std::string response = handle_command(line) + "\n";
-                    send(client_fd, response.c_str(), response.size(), 0);
+                    send(client_fd, response.c_str(), static_cast<int>(response.size()), 0);
                 }
             }
-            close(client_fd);
+            close_socket(client_fd);
         }).detach();
     }
 }

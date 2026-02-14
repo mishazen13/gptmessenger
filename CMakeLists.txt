@@ -19,3 +19,7 @@ add_executable(gptmessenger_server
     src/storage.cpp
 )
 target_include_directories(gptmessenger_server PRIVATE include)
+
+if (WIN32)
+    target_link_libraries(gptmessenger_server PRIVATE ws2_32)
+endif()
