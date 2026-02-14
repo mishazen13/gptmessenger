@@ -206,7 +206,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 }
 } // namespace
 
-int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, PWSTR, int ncmdshow) {
+int run_gui(HINSTANCE hinstance, int ncmdshow) {
     WSADATA wsa_data{};
     if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
         return 1;
@@ -240,6 +240,10 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, PWSTR, int ncmdshow) {
     WSACleanup();
     return 0;
 }
+
+int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, PWSTR, int ncmdshow) { return run_gui(hinstance, ncmdshow); }
+
+int WINAPI WinMain(HINSTANCE hinstance, HINSTANCE, LPSTR, int ncmdshow) { return run_gui(hinstance, ncmdshow); }
 
 #else
 int main() { return 0; }
