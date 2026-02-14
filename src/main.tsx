@@ -34,6 +34,15 @@ type MeResponse = {
 
 type View = 'chats' | 'friends' | 'requests' | 'groups';
 
+type MessageContextMenu = {
+  x: number;
+  y: number;
+  messageId: string;
+  chatId: string;
+  mine: boolean;
+  deletedForEveryone: boolean;
+};
+
 const TOKEN_KEY = 'liquid-messenger-token';
 
 const api = async <T,>(url: string, options: RequestInit = {}, token?: string): Promise<T> => {
@@ -65,6 +74,7 @@ const App = (): JSX.Element => {
   const [activeView, setActiveView] = React.useState<View>('chats');
   const [notice, setNotice] = React.useState('');
   const [isSyncing, setIsSyncing] = React.useState(false);
+  const [contextMenu, setContextMenu] = React.useState<MessageContextMenu | null>(null);
 
   const [authMode, setAuthMode] = React.useState<'login' | 'register'>('login');
   const [authName, setAuthName] = React.useState('');
@@ -123,6 +133,16 @@ const App = (): JSX.Element => {
       setActiveChatId(chats[0].id);
     }
   }, [chats, activeChatId]);
+
+  React.useEffect(() => {
+    const closeMenu = (): void => setContextMenu(null);
+    window.addEventListener('click', closeMenu);
+    window.addEventListener('scroll', closeMenu, true);
+    return () => {
+      window.removeEventListener('click', closeMenu);
+      window.removeEventListener('scroll', closeMenu, true);
+    };
+  }, []);
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
 
@@ -238,6 +258,35 @@ const App = (): JSX.Element => {
     } catch (error) {
       setNotice((error as Error).message);
     }
+  };
+
+  const onMessageContextMenu = (
+    event: React.MouseEvent<HTMLElement>,
+    chatId: string,
+    message: Message,
+    mine: boolean,
+  ): void => {
+    event.preventDefault();
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      chatId,
+      messageId: message.id,
+      mine,
+      deletedForEveryone: Boolean(message.deletedForEveryone),
+    });
+  };
+
+  const handleMenuReply = (): void => {
+    if (!contextMenu) return;
+    setReplyToMessageId(contextMenu.messageId);
+    setContextMenu(null);
+  };
+
+  const handleMenuDelete = (): void => {
+    if (!contextMenu) return;
+    void deleteMessage(contextMenu.chatId, contextMenu.messageId);
+    setContextMenu(null);
   };
 
   if (!me) {
@@ -393,6 +442,7 @@ const App = (): JSX.Element => {
                 })}
               </div>
 
+              <p className="mb-2 text-xs text-white/65">ПКМ по сообщению: открыть меню действий</p>
               <div className="mb-3 h-[50vh] space-y-2 overflow-auto rounded-2xl border border-white/20 bg-black/20 p-3">
                 {!activeChat && <p className="text-sm text-white/70">Выберите чат.</p>}
                 {activeChat?.messages.map((message) => {
@@ -400,16 +450,14 @@ const App = (): JSX.Element => {
                   const replyTo = activeChat.messages.find((candidate) => candidate.id === message.replyToMessageId);
                   const mine = message.senderId === me.user.id;
                   return (
-                    <article className={`max-w-[70%] rounded-2xl px-3 py-2 text-sm ${mine ? 'ml-auto bg-cyan-400 text-black' : 'bg-white/15'}`} key={message.id}>
+                    <article
+                      className={`max-w-[70%] rounded-2xl px-3 py-2 text-sm ${mine ? 'ml-auto bg-cyan-400 text-black' : 'bg-white/15'}`}
+                      key={message.id}
+                      onContextMenu={(event) => onMessageContextMenu(event, activeChat.id, message, mine)}
+                    >
                       <p className="mb-1 text-xs opacity-80">{sender?.name ?? 'Unknown'}</p>
                       {replyTo && <div className="mb-1 rounded-lg border border-black/20 bg-black/10 px-2 py-1 text-xs">↪ {replyTo.text}</div>}
                       <p>{message.text}</p>
-                      <div className="mt-2 flex gap-2 text-xs">
-                        <button className="underline" onClick={() => setReplyToMessageId(message.id)} type="button">Ответить</button>
-                        {mine && !message.deletedForEveryone && (
-                          <button className="underline" onClick={() => void deleteMessage(activeChat.id, message.id)} type="button">Удалить для всех</button>
-                        )}
-                      </div>
                     </article>
                   );
                 })}
@@ -432,6 +480,23 @@ const App = (): JSX.Element => {
           {notice && <p className="rounded-xl bg-white/10 px-3 py-2 text-sm text-cyan-200">{notice}</p>}
         </section>
       </div>
+
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-44 rounded-xl border border-white/20 bg-slate-950/95 p-1 text-sm shadow-glass backdrop-blur-xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button className="block w-full rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={handleMenuReply} type="button">
+            Ответить
+          </button>
+          {contextMenu.mine && !contextMenu.deletedForEveryone && (
+            <button className="block w-full rounded-lg px-3 py-2 text-left text-rose-300 hover:bg-white/10" onClick={handleMenuDelete} type="button">
+              Удалить для всех
+            </button>
+          )}
+        </div>
+      )}
     </main>
   );
 };
