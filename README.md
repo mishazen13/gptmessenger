@@ -14,8 +14,9 @@
 - `include/models.hpp` — доменные структуры (`User`, `Group`, `Message`)
 - `include/ui.hpp`, `src/ui.cpp` — UI, эффекты и ввод
 - `include/storage.hpp`, `src/storage.cpp` — загрузка/сохранение данных
-- `include/messenger.hpp`, `src/messenger.cpp` — бизнес-логика мессенджера
-- `src/main.cpp` — только точка входа
+- `include/messenger.hpp`, `src/messenger.cpp` — бизнес-логика клиентского приложения
+- `include/server.hpp`, `src/server.cpp`, `src/server_main.cpp` — отдельный TCP-сервер
+- `src/main.cpp` — точка входа клиентского приложения
 
 ## Сборка
 
@@ -24,10 +25,35 @@ cmake -S . -B build
 cmake --build build
 ```
 
-## Запуск
+## Запуск клиента
 
 ```bash
 ./build/gptmessenger
 ```
 
-> Для красивого интерфейса нужен терминал с поддержкой ANSI-цветов и UTF-8.
+## Запуск сервера
+
+```bash
+./build/gptmessenger_server 5555 data.txt
+```
+
+Если аргументы не переданы, сервер стартует на порту `5555` и использует `data.txt`.
+
+### Протокол сервера
+
+Сервер принимает текстовые команды в формате `CMD\targ1\targ2...` (разделитель — tab, строки заканчиваются `\n`).
+
+Примеры команд:
+- `PING`
+- `REGISTER\tuser\tpass`
+- `LOGIN\tuser\tpass`
+- `ADD_FRIEND\tuser\tpeer`
+- `CREATE_GROUP\tuser\tgroup`
+- `SEND_DM\tfrom\tto\ttext`
+- `GET_DM\tuser\tpeer`
+- `SEND_GROUP\tfrom\tgroup\ttext`
+- `GET_GROUP\tgroup`
+
+Ответы сервера: `OK\t...` или `ERR\t...`.
+
+> Для красивого интерфейса клиента нужен терминал с поддержкой ANSI-цветов и UTF-8.

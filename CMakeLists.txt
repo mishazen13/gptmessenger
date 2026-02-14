@@ -11,5 +11,11 @@ add_executable(gptmessenger
     src/storage.cpp
     src/ui.cpp
 )
-
 target_include_directories(gptmessenger PRIVATE include)
+
+add_executable(gptmessenger_server
+    src/server_main.cpp
+    src/server.cpp
+    src/storage.cpp
+)
+target_include_directories(gptmessenger_server PRIVATE include)
