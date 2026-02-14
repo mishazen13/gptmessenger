@@ -23,3 +23,11 @@ target_include_directories(gptmessenger_server PRIVATE include)
 if (WIN32)
     target_link_libraries(gptmessenger_server PRIVATE ws2_32)
 endif()
+
+
+if (WIN32)
+    add_executable(gptmessenger_desktop WIN32
+        src/win_gui_main.cpp
+    )
+    target_link_libraries(gptmessenger_desktop PRIVATE ws2_32 dwmapi)
+endif()
