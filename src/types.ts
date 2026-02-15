@@ -42,7 +42,6 @@ export type ThemeSettings = {
   wallpaperBlur: number;
   panelOpacity: number;
   sidebarOpacity: number;
-  messageOpacity: number;
   bubbleRadius: number;
   contentBlur: number;
   fontScale: number;

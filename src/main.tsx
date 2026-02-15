@@ -22,7 +22,6 @@ const DEFAULT_THEME: ThemeSettings = {
   wallpaperBlur: 0,
   panelOpacity: 0.15,
   sidebarOpacity: 0.15,
-  messageOpacity: 0.9,
   bubbleRadius: 16,
   contentBlur: 14,
   fontScale: 100,
@@ -349,7 +348,22 @@ const App = (): JSX.Element => {
   const handlePickFiles = async (files: FileList | null): Promise<void> => {
     if (!files?.length) return;
     try {
+      const MAX_FILE_BYTES = 8 * 1024 * 1024;
+      const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
       const allowed = Array.from(files).slice(0, 5);
+      const tooBig = allowed.find((file) => file.size > MAX_FILE_BYTES);
+      if (tooBig) {
+        setNotice(`Файл ${tooBig.name} слишком большой. Лимит 8 МБ на файл.`);
+        return;
+      }
+
+      const existingBytes = attachedFiles.reduce((sum, file) => sum + file.size, 0);
+      const pickedBytes = allowed.reduce((sum, file) => sum + file.size, 0);
+      if (existingBytes + pickedBytes > MAX_TOTAL_BYTES) {
+        setNotice('Слишком большой общий размер вложений. Лимит 20 МБ на сообщение.');
+        return;
+      }
+
       const nextFiles = await Promise.all(allowed.map(async (file) => ({
         id: crypto.randomUUID(),
         name: file.name,

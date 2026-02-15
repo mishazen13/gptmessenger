@@ -21,6 +21,12 @@ type Props = {
   theme: ThemeSettings;
 };
 
+const formatSize = (size: number): string => {
+  if (size < 1024) return `${size} Б`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} КБ`;
+  return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
+};
+
 const renderAttachment = (file: MessageAttachment): JSX.Element => {
   if (file.type.startsWith('image/')) {
     return <img src={file.url} alt={file.name} className="max-h-56 w-full rounded-xl object-cover" />;
@@ -28,7 +34,16 @@ const renderAttachment = (file: MessageAttachment): JSX.Element => {
   if (file.type.startsWith('video/')) {
     return <video src={file.url} className="max-h-56 w-full rounded-xl" controls preload="metadata" />;
   }
-  return <a href={file.url} download={file.name} className="text-sm underline">📎 {file.name}</a>;
+
+  return (
+    <div className="rounded-xl border border-white/20 bg-slate-900/55 p-3 text-slate-200">
+      <p className="truncate text-sm font-medium">📄 {file.name}</p>
+      <p className="mt-1 text-xs text-slate-400">{file.type || 'unknown'} · {formatSize(file.size)}</p>
+      <a href={file.url} download={file.name} className="mt-2 inline-block rounded-lg bg-white/10 px-3 py-1 text-xs hover:bg-white/20">
+        Скачать
+      </a>
+    </div>
+  );
 };
 
 export const ChatPage = ({
@@ -67,7 +82,7 @@ export const ChatPage = ({
       </div>
 
       <div className="mb-3 flex-1 w-full space-y-2 overflow-auto rounded-2xl bg-transparent p-1">
-        {!activeChat && <p className="text-sm text-white/70">Выберите чат слева.</p>}
+        {!activeChat && <p className="text-sm text-slate-300">Выберите чат слева.</p>}
         {activeChat?.messages.map((message) => {
           const sender = users.find((u) => u.id === message.senderId);
           const replyTo = activeChat.messages.find((m) => m.id === message.replyToMessageId);
@@ -77,8 +92,8 @@ export const ChatPage = ({
               className="max-w-[78%] px-3 py-2 text-sm"
               style={{
                 marginLeft: mine ? 'auto' : undefined,
-                backgroundColor: mine ? `${theme.accentColor}${Math.round(theme.messageOpacity * 255).toString(16).padStart(2, '0')}` : `rgba(255,255,255,${theme.messageOpacity * 0.75})`,
-                color: mine ? '#041314' : 'white',
+                backgroundColor: mine ? `${theme.accentColor}CC` : 'rgba(255,255,255,0.15)',
+                color: mine ? '#041314' : '#d1d5db',
                 borderRadius: `${theme.bubbleRadius}px`,
               }}
               key={message.id}
@@ -122,7 +137,7 @@ export const ChatPage = ({
         <input className="flex-1 rounded-xl border border-white/20 bg-white/10 px-3 py-2" value={messageText} onChange={(e) => onMessageText(e.target.value)} placeholder="Введите сообщение..." />
         <label className="cursor-pointer rounded-xl px-3 py-2 font-semibold text-black" style={{ backgroundColor: theme.accentColor }}>
           📎
-          <input className="hidden" type="file" multiple accept="image/*,video/*,.pdf,.txt,.zip" onChange={(e) => onPickFiles(e.target.files)} />
+          <input className="hidden" type="file" multiple accept="image/*,video/*,.pdf,.txt,.zip,.doc,.docx,.xlsx" onChange={(e) => onPickFiles(e.target.files)} />
         </label>
         <button className="rounded-xl px-4 py-2 font-semibold text-black" style={{ backgroundColor: theme.accentColor }} type="submit">Отправить</button>
       </form>
