@@ -36,7 +36,7 @@ export const ChatPage = ({
     : undefined;
 
   return (
-    <div className="h-full rounded-2xl border border-white/20 bg-white/10 p-4">
+    <div className="flex h-full flex-col rounded-2xl border border-white/20 bg-white/10 p-4">
       <div className="mb-3 flex items-center gap-3">
         <Avatar imageUrl={peer ? getAvatarUrl(peer.id) : undefined} name={peer ? getDisplayName(peer) : activeChat?.name ?? 'Чат'} size={40} />
         {peer ? (
@@ -48,7 +48,7 @@ export const ChatPage = ({
         )}
       </div>
 
-      <div className="mb-3 h-[62vh] w-full space-y-2 overflow-auto rounded-2xl bg-transparent p-1">
+      <div className="mb-3 flex-1 w-full space-y-2 overflow-auto rounded-2xl bg-transparent p-1">
         {!activeChat && <p className="text-sm text-white/70">Выберите чат слева.</p>}
         {activeChat?.messages.map((message) => {
           const sender = users.find((u) => u.id === message.senderId);
@@ -78,7 +78,7 @@ export const ChatPage = ({
         </div>
       )}
 
-      <form className="flex gap-2" onSubmit={onSend}>
+      <form className="mt-auto flex gap-2" onSubmit={onSend}>
         <input className="flex-1 rounded-xl border border-white/20 bg-white/10 px-3 py-2" value={messageText} onChange={(e) => onMessageText(e.target.value)} placeholder="Введите сообщение..." />
         <button className="rounded-xl bg-cyan-400 px-4 py-2 font-semibold text-black" type="submit">Отправить</button>
       </form>

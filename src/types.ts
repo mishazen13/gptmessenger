@@ -30,7 +30,7 @@ export type MeResponse = {
 
 export type AppPage = 'chat' | 'plus' | 'add-friend' | 'create-group' | 'settings' | 'friend-profile';
 export type AuthPage = 'login' | 'register';
-export type SettingsSection = 'profile' | 'session' | 'about';
+export type SettingsSection = 'profile' | 'personalization' | 'session' | 'about';
 
 export type MessageContextMenu = {
   x: number;

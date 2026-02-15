@@ -60,8 +60,6 @@ const App = (): JSX.Element => {
   const [isEditingAlias, setIsEditingAlias] = React.useState(false);
 
   const [prefs, setPrefs] = React.useState<PrefMap>(() => readPrefs());
-  const [avatarUrlInput, setAvatarUrlInput] = React.useState('');
-  const [wallpaperUrlInput, setWallpaperUrlInput] = React.useState('');
 
   const aliasKey = React.useMemo(() => (me ? `aliases:${me.user.id}` : ''), [me]);
   const aliases = React.useMemo<Record<string, string>>(() => {
@@ -83,11 +81,14 @@ const App = (): JSX.Element => {
   const getDisplayName = (user: PublicUser): string => aliases[user.id] || user.name;
   const getAvatarUrl = (userId: string): string | undefined => prefs[userId]?.avatarUrl;
 
-  React.useEffect(() => {
-    if (!me) return;
-    setAvatarUrlInput(prefs[me.user.id]?.avatarUrl || '');
-    setWallpaperUrlInput(prefs[me.user.id]?.wallpaperUrl || '');
-  }, [me, prefs]);
+  const readFileAsDataUrl = async (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
+      reader.readAsDataURL(file);
+    });
+
 
   const refreshData = React.useCallback(async (silent = false) => {
     if (!token) return;
@@ -274,18 +275,23 @@ const App = (): JSX.Element => {
     setContextMenu(null);
   };
 
-  const saveAppearance = (): void => {
-    if (!me) return;
-    const next = {
-      ...prefs,
-      [me.user.id]: {
-        avatarUrl: avatarUrlInput.trim(),
-        wallpaperUrl: wallpaperUrlInput.trim(),
-      },
-    };
-    setPrefs(next);
-    savePrefs(next);
-    setNotice('Внешний вид сохранён.');
+  const saveAppearanceFile = async (field: 'avatarUrl' | 'wallpaperUrl', file: File | null): Promise<void> => {
+    if (!me || !file) return;
+    try {
+      const value = await readFileAsDataUrl(file);
+      const next = {
+        ...prefs,
+        [me.user.id]: {
+          ...prefs[me.user.id],
+          [field]: value,
+        },
+      };
+      setPrefs(next);
+      savePrefs(next);
+      setNotice(field === 'avatarUrl' ? 'Аватар сохранён.' : 'Обои сохранены.');
+    } catch (error) {
+      setNotice((error as Error).message);
+    }
   };
 
   if (!me) {
@@ -392,11 +398,8 @@ const App = (): JSX.Element => {
               onBack={() => setAppPage('chat')}
               onLogout={() => void logout()}
               uiVersion={UI_VERSION}
-              avatarUrl={avatarUrlInput}
-              wallpaperUrl={wallpaperUrlInput}
-              onAvatarUrl={setAvatarUrlInput}
-              onWallpaperUrl={setWallpaperUrlInput}
-              onSaveAppearance={saveAppearance}
+              onAvatarFile={(file) => void saveAppearanceFile('avatarUrl', file)}
+              onWallpaperFile={(file) => void saveAppearanceFile('wallpaperUrl', file)}
             />
           )}
 

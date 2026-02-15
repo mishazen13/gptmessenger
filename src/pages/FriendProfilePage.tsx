@@ -31,7 +31,7 @@ export const FriendProfilePage = ({
   }
 
   return (
-    <div className="h-full rounded-2xl border border-white/20 bg-white/10 p-4">
+    <div className="relative h-full rounded-2xl border border-white/20 bg-white/10 p-4">
       <div className="mb-5 flex flex-col items-center gap-3 text-center">
         <Avatar imageUrl={avatarUrl} name={alias || friend.name} size={72} />
         <div className="flex items-center gap-2">
@@ -42,18 +42,18 @@ export const FriendProfilePage = ({
       </div>
 
       {isEditingAlias && (
-        <div className="mb-4 rounded-xl bg-white/5 p-3">
+        <div className="absolute right-4 top-24 z-10 w-72 rounded-xl border border-white/20 bg-slate-950/95 p-3 shadow-glass backdrop-blur-xl">
           <p className="mb-2 text-sm">Новое имя для себя</p>
           <div className="flex gap-2">
             <input className="flex-1 rounded-xl border border-white/20 bg-white/10 px-3 py-2" value={alias} onChange={(e) => onAlias(e.target.value)} placeholder="Локальное имя" />
-            <button className="rounded-xl bg-cyan-400 px-4 py-2 font-semibold text-black" onClick={onSaveAlias} type="button">Сохранить</button>
+            <button className="rounded-xl bg-cyan-400 px-4 py-2 font-semibold text-black" onClick={onSaveAlias} type="button">OK</button>
           </div>
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        <button className="rounded-xl bg-rose-400 px-4 py-2 text-sm font-semibold text-black" onClick={onDeleteFriend} type="button">Удалить из друзей</button>
-        <button className="rounded-xl bg-white/10 px-4 py-2 text-sm" disabled={!chat} onClick={onClearChat} type="button">Очистить чат</button>
+      <div className="mt-6 flex flex-col gap-2">
+        <button className="w-full rounded-xl bg-transparent px-4 py-3 text-left text-sm transition hover:bg-white/10" disabled={!chat} onClick={onClearChat} type="button">Очистить чат</button>
+        <button className="w-full rounded-xl bg-transparent px-4 py-3 text-left text-sm text-rose-300 transition hover:bg-rose-500/20" onClick={onDeleteFriend} type="button">Удалить из друзей</button>
       </div>
     </div>
   );

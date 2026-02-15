@@ -42,7 +42,7 @@ export const Sidebar = ({
 
     <div className="mb-3 flex-1 space-y-2 overflow-auto pr-1">
       {appPage === 'settings' ? (
-        ([['profile', 'Профиль'], ['session', 'Сессия'], ['about', 'О приложении']] as [SettingsSection, string][]).map(([key, label]) => (
+        ([['profile', 'Профиль'], ['personalization', 'Персонализация'], ['session', 'Сессия'], ['about', 'О приложении']] as [SettingsSection, string][]).map(([key, label]) => (
           <button key={key} className={`w-full rounded-xl px-3 py-2 text-left text-sm ${settingsSection === key ? 'bg-cyan-400 text-black' : 'bg-white/10'}`} onClick={() => onSettingsSection(key)} type="button">{label}</button>
         ))
       ) : (
