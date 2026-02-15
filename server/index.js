@@ -108,7 +108,9 @@ app.get('/api/me', (req, res) => {
   const user = getAuthUser(req, db);
   if (!user) return res.status(401).json({ error: 'unauthorized' });
 
-  const friendRequests = db.friendRequests.filter((item) => item.toUserId === user.id).map((item) => item.fromUserId);
+  const friendRequests = db.friendRequests
+    .filter((item) => item.toUserId === user.id && item.status === 'pending')
+    .map((item) => item.fromUserId);
   const friends = db.friendRequests
     .filter((item) => item.status === 'accepted' && (item.toUserId === user.id || item.fromUserId === user.id))
     .map((item) => (item.toUserId === user.id ? item.fromUserId : item.toUserId));
