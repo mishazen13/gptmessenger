@@ -9,6 +9,7 @@ type Props = {
   uiVersion: string;
   onAvatarFile: (file: File | null) => void;
   onWallpaperFile: (file: File | null) => void;
+  onBannerFile: (file: File | null) => void;
   theme: ThemeSettings;
   onTheme: <K extends keyof ThemeSettings>(key: K, value: ThemeSettings[K]) => void;
   onResetTheme: () => void;
@@ -21,7 +22,7 @@ const Slider = ({ label, min, max, step, value, onChange }: { label: string; min
   </label>
 );
 
-export const SettingsPage = ({ me, section, onBack, onLogout, uiVersion, onAvatarFile, onWallpaperFile, theme, onTheme, onResetTheme }: Props): JSX.Element => {
+export const SettingsPage = ({ me, section, onBack, onLogout, uiVersion, onAvatarFile, onWallpaperFile, onBannerFile, theme, onTheme, onResetTheme }: Props): JSX.Element => {
   const [previewOpen, setPreviewOpen] = React.useState(false);
 
   const updateThemeWithPreview = <K extends keyof ThemeSettings>(key: K, value: ThemeSettings[K]): void => {
@@ -50,6 +51,8 @@ export const SettingsPage = ({ me, section, onBack, onLogout, uiVersion, onAvata
 
             <label className="block text-sm text-slate-300">Аватар из проводника</label>
             <input className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2" type="file" accept="image/*" onChange={(e) => onAvatarFile(e.target.files?.[0] ?? null)} />
+            <label className="block text-sm text-slate-300">Баннер профиля</label>
+            <input className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2" type="file" accept="image/*" onChange={(e) => onBannerFile(e.target.files?.[0] ?? null)} />
           </div>
         )}
 

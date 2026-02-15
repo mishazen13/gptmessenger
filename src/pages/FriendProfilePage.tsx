@@ -12,6 +12,7 @@ type Props = {
   onClearChat: () => void;
   chat?: Chat;
   avatarUrl?: string;
+  bannerUrl?: string;
 };
 
 export const FriendProfilePage = ({
@@ -25,6 +26,7 @@ export const FriendProfilePage = ({
   onClearChat,
   chat,
   avatarUrl,
+  bannerUrl,
 }: Props): JSX.Element => {
   if (!friend) {
     return <div className="rounded-2xl border border-white/20 bg-white/10 p-4 text-sm text-white/70">Пользователь не выбран.</div>;
@@ -32,8 +34,12 @@ export const FriendProfilePage = ({
 
   return (
     <div className="relative h-full rounded-2xl border border-white/20 bg-white/10 p-4">
-      <div className="mb-5 flex flex-col items-center gap-3 text-center">
-        <Avatar imageUrl={avatarUrl} name={alias || friend.name} size={72} />
+      <div className="mb-6 overflow-hidden rounded-xl border border-white/20">
+        {bannerUrl ? <img src={bannerUrl} alt="friend banner" className="h-28 w-full object-cover" /> : <div className="h-28 w-full bg-gradient-to-r from-indigo-500/30 to-cyan-500/30" />}
+      </div>
+
+      <div className="mb-5 -mt-16 flex flex-col items-center gap-3 text-center">
+        <Avatar imageUrl={avatarUrl} name={alias || friend.name} size={96} />
         <div className="flex items-center gap-2">
           <p className="text-lg font-semibold">{alias || friend.name}</p>
           <button className="rounded bg-white/10 px-2 py-1 text-xs" onClick={onToggleEdit} type="button">✏️</button>

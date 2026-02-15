@@ -56,7 +56,7 @@ const CustomVideoPlayer = ({ file }: { file: MessageAttachment }): JSX.Element =
   };
 
   return (
-    <div className="rounded-xl border border-white/20 bg-black/35 p-2">
+    <div className="relative rounded-xl border border-white/20 bg-black/35 p-2">
       <video
         ref={ref}
         src={file.url}
@@ -68,8 +68,16 @@ const CustomVideoPlayer = ({ file }: { file: MessageAttachment }): JSX.Element =
         }}
         onEnded={() => setPlaying(false)}
       />
+      {!playing && (
+        <button
+          type="button"
+          className="absolute left-1/2 top-1/2 grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/50 bg-black/45 text-lg text-white"
+          onClick={toggle}
+        >
+          ▶
+        </button>
+      )}
       <div className="mt-2 flex items-center gap-2">
-        <button type="button" className="rounded-md bg-white/15 px-2 py-1 text-xs" onClick={toggle}>{playing ? 'Пауза' : '▶︎ Пуск'}</button>
         <input
           className="w-full"
           type="range"
@@ -96,24 +104,27 @@ const AudioCard = ({ file }: { file: MessageAttachment }): JSX.Element => {
   return (
     <div className="rounded-xl border border-white/20 bg-slate-900/55 p-3 text-slate-100">
       <audio ref={ref} src={file.url} preload="metadata" onEnded={() => setPlaying(false)} />
-      <p className="truncate text-sm font-medium">🎵 {file.name}</p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/15 text-xs hover:bg-white/25"
+          onClick={() => {
+            if (!ref.current) return;
+            if (ref.current.paused) {
+              void ref.current.play();
+              setPlaying(true);
+            } else {
+              ref.current.pause();
+              setPlaying(false);
+            }
+          }}
+        >
+          {playing ? '❚❚' : '▶'}
+        </button>
+        <p className="truncate text-sm font-medium">🎵 {file.name}</p>
+      </div>
       <p className="mt-1 text-xs text-slate-400">{formatSize(file.size)}</p>
-      <button
-        type="button"
-        className="mt-2 rounded-lg bg-white/10 px-3 py-1 text-xs hover:bg-white/20"
-        onClick={() => {
-          if (!ref.current) return;
-          if (ref.current.paused) {
-            void ref.current.play();
-            setPlaying(true);
-          } else {
-            ref.current.pause();
-            setPlaying(false);
-          }
-        }}
-      >
-        {playing ? 'Пауза' : '▶︎ Слушать'}
-      </button>
+      <a href={file.url} download={file.name} className="mt-2 inline-block rounded-lg bg-white/10 px-3 py-1 text-xs hover:bg-white/20">Скачать</a>
     </div>
   );
 };

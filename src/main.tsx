@@ -28,7 +28,7 @@ const DEFAULT_THEME: ThemeSettings = {
   saturation: 100,
 };
 
-type UserPrefs = { avatarUrl?: string; wallpaperUrl?: string; theme?: ThemeSettings };
+type UserPrefs = { avatarUrl?: string; bannerUrl?: string; wallpaperUrl?: string; theme?: ThemeSettings };
 
 type PrefMap = Record<string, UserPrefs>;
 
@@ -92,6 +92,7 @@ const App = (): JSX.Element => {
 
   const getDisplayName = (user: PublicUser): string => aliases[user.id] || user.name;
   const getAvatarUrl = (userId: string): string | undefined => prefs[userId]?.avatarUrl;
+  const getBannerUrl = (userId: string): string | undefined => prefs[userId]?.bannerUrl;
 
   const readFileAsDataUrl = async (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -345,7 +346,7 @@ const App = (): JSX.Element => {
     setContextMenu(null);
   };
 
-  const saveAppearanceFile = async (field: 'avatarUrl' | 'wallpaperUrl', file: File | null): Promise<void> => {
+  const saveAppearanceFile = async (field: 'avatarUrl' | 'bannerUrl' | 'wallpaperUrl', file: File | null): Promise<void> => {
     if (!me || !file) return;
     try {
       const value = await readFileAsDataUrl(file);
@@ -358,7 +359,7 @@ const App = (): JSX.Element => {
       };
       setPrefs(next);
       savePrefs(next);
-      setNotice(field === 'avatarUrl' ? 'Аватар сохранён.' : 'Обои сохранены.');
+      setNotice(field === 'avatarUrl' ? 'Аватар сохранён.' : field === 'bannerUrl' ? 'Баннер сохранён.' : 'Обои сохранены.');
     } catch (error) {
       setNotice((error as Error).message);
     }
@@ -483,6 +484,7 @@ const App = (): JSX.Element => {
           displayName={getDisplayName}
           uiVersion={UI_VERSION}
           avatarUrl={getAvatarUrl(me.user.id)}
+          bannerUrl={getBannerUrl(me.user.id)}
           accentColor={theme.accentColor}
           sidebarOpacity={theme.sidebarOpacity}
           contentBlur={theme.contentBlur}
@@ -542,6 +544,7 @@ const App = (): JSX.Element => {
               uiVersion={UI_VERSION}
               onAvatarFile={(file) => void saveAppearanceFile('avatarUrl', file)}
               onWallpaperFile={(file) => void saveAppearanceFile('wallpaperUrl', file)}
+              onBannerFile={(file) => void saveAppearanceFile('bannerUrl', file)}
               theme={theme}
               onTheme={updateTheme}
               onResetTheme={resetTheme}
@@ -564,6 +567,7 @@ const App = (): JSX.Element => {
               onClearChat={() => friendDirectChat && void clearChat(friendDirectChat.id)}
               chat={friendDirectChat}
               avatarUrl={friend ? getAvatarUrl(friend.id) : undefined}
+              bannerUrl={friend ? getBannerUrl(friend.id) : undefined}
             />
           )}
 
