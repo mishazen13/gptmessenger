@@ -13,8 +13,10 @@ type Props = {
   onSelectChat: (id: string) => void;
   onOpenPlus: () => void;
   onOpenSettings: () => void;
+  onOpenCreateGroup: () => void;
   displayName: (u: PublicUser) => string;
   uiVersion: string;
+  avatarUrl?: string;
 };
 
 export const Sidebar = ({
@@ -29,14 +31,22 @@ export const Sidebar = ({
   onSelectChat,
   onOpenPlus,
   onOpenSettings,
+  onOpenCreateGroup,
   displayName,
   uiVersion,
+  avatarUrl,
 }: Props): JSX.Element => (
   <aside className="flex h-[calc(100vh-2rem)] flex-col rounded-2xl border border-white/20 bg-white/10 p-4 shadow-glass backdrop-blur-xl">
     <div className="mb-3 flex items-center justify-between text-xs text-white/75">
       <span>{appPage === 'settings' ? 'Разделы настроек' : 'Контакты и чаты'}</span>
       <span>{isSyncing ? 'sync...' : 'online'}</span>
     </div>
+
+    {appPage !== 'settings' && (
+      <button className="mb-3 w-full rounded-xl bg-indigo-400 px-3 py-2 text-sm font-semibold text-black" onClick={onOpenCreateGroup} type="button">
+        Создать группу
+      </button>
+    )}
 
     <div className="mb-3 flex-1 space-y-2 overflow-auto pr-1">
       {appPage === 'settings' ? (
@@ -62,7 +72,7 @@ export const Sidebar = ({
     <div className="h-28 rounded-xl bg-white/5 px-3 py-3">
       <div className="mb-1 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <Avatar name={me.name} size={28} />
+          <Avatar imageUrl={avatarUrl} name={me.name} size={28} />
           <p className="truncate text-sm font-semibold">{me.name}</p>
         </div>
         <button className="rounded-lg bg-white/10 p-2 text-sm hover:bg-white/20" onClick={onOpenSettings} title="Настройки" type="button">⚙️</button>

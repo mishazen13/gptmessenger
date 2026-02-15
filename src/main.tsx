@@ -11,9 +11,28 @@ import { AddFriendPage } from './pages/AddFriendPage';
 import { PlusPage } from './pages/PlusPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { FriendProfilePage } from './pages/FriendProfilePage';
+import { CreateGroupPage } from './pages/CreateGroupPage';
 
 const TOKEN_KEY = 'liquid-messenger-token';
-const UI_VERSION = 'UI v4.0';
+const UI_VERSION = 'UI v4.1';
+const PREFS_KEY = 'ui-prefs-v1';
+
+type UserPrefs = { avatarUrl?: string; wallpaperUrl?: string };
+
+type PrefMap = Record<string, UserPrefs>;
+
+const readPrefs = (): PrefMap => {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    return raw ? (JSON.parse(raw) as PrefMap) : {};
+  } catch {
+    return {};
+  }
+};
+
+const savePrefs = (prefs: PrefMap): void => {
+  localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+};
 
 const App = (): JSX.Element => {
   const [token, setToken] = React.useState<string | null>(() => sessionStorage.getItem(TOKEN_KEY));
@@ -38,6 +57,11 @@ const App = (): JSX.Element => {
   const [messageText, setMessageText] = React.useState('');
   const [replyToMessageId, setReplyToMessageId] = React.useState('');
   const [aliasInput, setAliasInput] = React.useState('');
+  const [isEditingAlias, setIsEditingAlias] = React.useState(false);
+
+  const [prefs, setPrefs] = React.useState<PrefMap>(() => readPrefs());
+  const [avatarUrlInput, setAvatarUrlInput] = React.useState('');
+  const [wallpaperUrlInput, setWallpaperUrlInput] = React.useState('');
 
   const aliasKey = React.useMemo(() => (me ? `aliases:${me.user.id}` : ''), [me]);
   const aliases = React.useMemo<Record<string, string>>(() => {
@@ -57,6 +81,13 @@ const App = (): JSX.Element => {
   };
 
   const getDisplayName = (user: PublicUser): string => aliases[user.id] || user.name;
+  const getAvatarUrl = (userId: string): string | undefined => prefs[userId]?.avatarUrl;
+
+  React.useEffect(() => {
+    if (!me) return;
+    setAvatarUrlInput(prefs[me.user.id]?.avatarUrl || '');
+    setWallpaperUrlInput(prefs[me.user.id]?.wallpaperUrl || '');
+  }, [me, prefs]);
 
   const refreshData = React.useCallback(async (silent = false) => {
     if (!token) return;
@@ -243,6 +274,20 @@ const App = (): JSX.Element => {
     setContextMenu(null);
   };
 
+  const saveAppearance = (): void => {
+    if (!me) return;
+    const next = {
+      ...prefs,
+      [me.user.id]: {
+        avatarUrl: avatarUrlInput.trim(),
+        wallpaperUrl: wallpaperUrlInput.trim(),
+      },
+    };
+    setPrefs(next);
+    savePrefs(next);
+    setNotice('Внешний вид сохранён.');
+  };
+
   if (!me) {
     return (
       <main className="min-h-screen bg-gradient-to-br from-indigo-950 via-slate-950 to-cyan-950 p-4 text-white">
@@ -268,12 +313,19 @@ const App = (): JSX.Element => {
   const friendRequests = me.incomingRequestIds.map((id) => usersMap.get(id)).filter(Boolean) as PublicUser[];
   const friend = me.users.find((u) => u.id === friendProfileId);
   const friendDirectChat = chats.find((c) => !c.isGroup && friendProfileId && c.memberIds.includes(me.user.id) && c.memberIds.includes(friendProfileId));
+  const wallpaper = prefs[me.user.id]?.wallpaperUrl;
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-indigo-950 via-slate-950 to-cyan-950 p-4 text-white">
-      <div className="pointer-events-none absolute left-10 top-10 h-60 w-60 animate-float-slow rounded-full bg-cyan-300/20 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-20 right-10 h-60 w-60 animate-float-slow rounded-full bg-indigo-300/20 blur-3xl" />
-
+    <main
+      className="relative min-h-screen overflow-hidden p-4 text-white"
+      style={{
+        backgroundImage: wallpaper
+          ? `linear-gradient(130deg, rgba(30,27,75,0.88), rgba(2,6,23,0.86), rgba(8,145,178,0.65)), url(${wallpaper})`
+          : 'linear-gradient(130deg, rgb(30 27 75), rgb(2 6 23), rgb(8 47 73))',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }}
+    >
       <div className="relative mx-auto grid max-w-7xl gap-4 lg:grid-cols-[320px_1fr]">
         <Sidebar
           me={me.user}
@@ -287,8 +339,10 @@ const App = (): JSX.Element => {
           onSelectChat={(id) => { setActiveChatId(id); setAppPage('chat'); }}
           onOpenPlus={() => setAppPage('plus')}
           onOpenSettings={() => setAppPage('settings')}
+          onOpenCreateGroup={() => setAppPage('create-group')}
           displayName={getDisplayName}
           uiVersion={UI_VERSION}
+          avatarUrl={getAvatarUrl(me.user.id)}
         />
 
         <section className="h-[calc(100vh-2rem)] overflow-auto">
@@ -298,7 +352,8 @@ const App = (): JSX.Element => {
               users={me.users}
               activeChat={activeChat}
               getDisplayName={getDisplayName}
-              onOpenFriendProfile={(id) => { setFriendProfileId(id); setAliasInput(aliases[id] || ''); setAppPage('friend-profile'); }}
+              getAvatarUrl={getAvatarUrl}
+              onOpenFriendProfile={(id) => { setFriendProfileId(id); setAliasInput(aliases[id] || ''); setIsEditingAlias(false); setAppPage('friend-profile'); }}
               onContextMenu={onMessageContextMenu}
               replyToMessageId={replyToMessageId}
               onClearReply={() => setReplyToMessageId('')}
@@ -315,28 +370,53 @@ const App = (): JSX.Element => {
               friendEmail={friendEmail}
               onFriendEmail={setFriendEmail}
               onAddFriend={addFriend}
+              requests={friendRequests}
+              onAccept={(id) => void acceptFriendRequest(id)}
+            />
+          )}
+
+          {appPage === 'create-group' && (
+            <CreateGroupPage
               groupName={groupName}
               onGroupName={setGroupName}
               friends={friends}
               selected={groupSelectedFriends}
               onToggle={(id) => setGroupSelectedFriends((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]))}
               onCreateGroup={createGroup}
-              requests={friendRequests}
-              onAccept={(id) => void acceptFriendRequest(id)}
             />
           )}
 
-          {appPage === 'settings' && <SettingsPage me={me.user} section={settingsSection} onSection={setSettingsSection} onLogout={() => void logout()} uiVersion={UI_VERSION} />}
+          {appPage === 'settings' && (
+            <SettingsPage
+              me={me.user}
+              section={settingsSection}
+              onBack={() => setAppPage('chat')}
+              onLogout={() => void logout()}
+              uiVersion={UI_VERSION}
+              avatarUrl={avatarUrlInput}
+              wallpaperUrl={wallpaperUrlInput}
+              onAvatarUrl={setAvatarUrlInput}
+              onWallpaperUrl={setWallpaperUrlInput}
+              onSaveAppearance={saveAppearance}
+            />
+          )}
 
           {appPage === 'friend-profile' && (
             <FriendProfilePage
               friend={friend}
               alias={aliasInput}
+              isEditingAlias={isEditingAlias}
               onAlias={setAliasInput}
-              onSaveAlias={() => friend && saveAlias(friend.id, aliasInput)}
+              onToggleEdit={() => setIsEditingAlias((prev) => !prev)}
+              onSaveAlias={() => {
+                if (!friend) return;
+                saveAlias(friend.id, aliasInput);
+                setIsEditingAlias(false);
+              }}
               onDeleteFriend={() => friend && void removeFriend(friend.id)}
               onClearChat={() => friendDirectChat && void clearChat(friendDirectChat.id)}
               chat={friendDirectChat}
+              avatarUrl={friend ? getAvatarUrl(friend.id) : undefined}
             />
           )}
 

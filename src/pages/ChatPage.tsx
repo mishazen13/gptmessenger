@@ -7,6 +7,7 @@ type Props = {
   users: PublicUser[];
   activeChat?: Chat;
   getDisplayName: (user: PublicUser) => string;
+  getAvatarUrl: (userId: string) => string | undefined;
   onOpenFriendProfile: (id: string) => void;
   onContextMenu: (event: React.MouseEvent<HTMLElement>, chatId: string, message: Message, mine: boolean) => void;
   replyToMessageId: string;
@@ -21,6 +22,7 @@ export const ChatPage = ({
   users,
   activeChat,
   getDisplayName,
+  getAvatarUrl,
   onOpenFriendProfile,
   onContextMenu,
   replyToMessageId,
@@ -36,7 +38,7 @@ export const ChatPage = ({
   return (
     <div className="rounded-2xl border border-white/20 bg-white/10 p-4">
       <div className="mb-3 flex items-center gap-3">
-        <Avatar name={peer ? getDisplayName(peer) : activeChat?.name ?? 'Чат'} size={40} />
+        <Avatar imageUrl={peer ? getAvatarUrl(peer.id) : undefined} name={peer ? getDisplayName(peer) : activeChat?.name ?? 'Чат'} size={40} />
         {peer ? (
           <button className="text-left text-lg font-semibold hover:underline" onClick={() => onOpenFriendProfile(peer.id)} type="button">
             {getDisplayName(peer)}
@@ -54,12 +56,12 @@ export const ChatPage = ({
           const mine = message.senderId === me.id;
           return (
             <article
-              className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm ${mine ? 'ml-auto bg-cyan-400 text-black' : 'bg-white/15'}`}
+              className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm ${mine ? 'ml-auto bg-emerald-300/80 text-slate-900' : 'bg-white/15'}`}
               key={message.id}
               onContextMenu={(event) => onContextMenu(event, activeChat.id, message, mine)}
             >
               <div className="mb-1 flex items-center gap-2 text-xs opacity-80">
-                <Avatar name={sender ? getDisplayName(sender) : 'Unknown'} size={20} />
+                <Avatar imageUrl={sender ? getAvatarUrl(sender.id) : undefined} name={sender ? getDisplayName(sender) : 'Unknown'} size={20} />
                 <span>{sender ? getDisplayName(sender) : 'Unknown'}</span>
               </div>
               {replyTo && <div className="mb-1 rounded-lg border border-black/20 bg-black/10 px-2 py-1 text-xs">↪ {replyTo.text}</div>}
