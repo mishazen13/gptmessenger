@@ -40,7 +40,7 @@ export const Sidebar = ({
   sidebarOpacity,
   contentBlur,
 }: Props): JSX.Element => (
-  <aside className="flex h-[calc(100vh-2rem)] flex-col rounded-2xl border border-white/20 p-4 shadow-glass" style={{ backgroundColor: `rgba(255,255,255,${sidebarOpacity})`, backdropFilter: `blur(${contentBlur}px)` }}>
+  <aside className="flex h-[calc(100vh-2rem)] flex-col rounded-2xl border border-white/20 p-4 shadow-glass" style={{ backgroundColor: `rgba(71,85,105,${sidebarOpacity})`, backdropFilter: `blur(${contentBlur}px)` }}>
     <div className="mb-3 flex items-center justify-between text-xs text-white/75">
       <span>{appPage === 'settings' ? 'Разделы настроек' : 'Контакты и чаты'}</span>
       <span>{isSyncing ? 'sync...' : 'online'}</span>
@@ -49,7 +49,7 @@ export const Sidebar = ({
     <div className="mb-3 flex-1 space-y-2 overflow-auto pr-1">
       {appPage === 'settings' ? (
         ([['profile', 'Профиль'], ['personalization', 'Персонализация'], ['session', 'Сессия'], ['about', 'О приложении']] as [SettingsSection, string][]).map(([key, label]) => (
-          <button key={key} className={`w-full rounded-xl px-3 py-2 text-left text-sm ${settingsSection === key ? 'text-black' : 'bg-white/10'}`} style={settingsSection === key ? { backgroundColor: accentColor } : undefined} onClick={() => onSettingsSection(key)} type="button">{label}</button>
+          <button key={key} className={`w-full rounded-xl px-3 py-2 text-left text-sm ${settingsSection === key ? 'text-black' : 'bg-slate-700/40'}`} style={settingsSection === key ? { backgroundColor: accentColor } : undefined} onClick={() => onSettingsSection(key)} type="button">{label}</button>
         ))
       ) : (
         <>
@@ -58,7 +58,7 @@ export const Sidebar = ({
             const directPeer = !chat.isGroup ? users.find((u) => u.id !== me.id && chat.memberIds.includes(u.id)) : undefined;
             const title = chat.isGroup ? `👥 ${chat.name}` : `💬 ${directPeer ? displayName(directPeer) : 'Личный чат'}`;
             return (
-              <button key={chat.id} className={`w-full rounded-xl px-3 py-2 text-left text-sm ${activeChatId === chat.id ? 'text-black' : 'bg-white/10'}`} style={activeChatId === chat.id ? { backgroundColor: accentColor } : undefined} onClick={() => onSelectChat(chat.id)} type="button">{title}</button>
+              <button key={chat.id} className={`w-full rounded-xl px-3 py-2 text-left text-sm ${activeChatId === chat.id ? 'text-black' : 'bg-slate-700/40'}`} style={activeChatId === chat.id ? { backgroundColor: accentColor } : undefined} onClick={() => onSelectChat(chat.id)} type="button">{title}</button>
             );
           })}
         </>
@@ -67,7 +67,7 @@ export const Sidebar = ({
 
     <button className="mb-3 ml-auto h-12 w-12 rounded-xl text-2xl font-bold text-black" style={{ backgroundColor: accentColor }} onClick={onOpenPlus} type="button">+</button>
 
-    <div className="h-28 rounded-xl bg-white/5 px-3 py-3">
+    <div className="h-28 rounded-xl bg-slate-800/40 px-3 py-3">
       <div className="mb-1 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <Avatar imageUrl={avatarUrl} name={me.name} size={28} />

@@ -10,6 +10,7 @@ export type MessageAttachment = {
   type: string;
   url: string;
   size: number;
+  localFile?: File;
 };
 
 export type Message = {

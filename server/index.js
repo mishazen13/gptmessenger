@@ -4,10 +4,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { v4 as uuidv4 } from 'uuid';
+import multer from 'multer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DB_PATH = path.join(__dirname, 'db.json');
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
 
 const ensureDb = () => {
   if (!fs.existsSync(DB_PATH)) {
@@ -28,6 +30,29 @@ const writeDb = (db) => {
   fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
 };
 
+
+const ensureUploadsDir = () => {
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+};
+
+ensureUploadsDir();
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname || '');
+      cb(null, `${uuidv4()}${ext}`);
+    },
+  }),
+  limits: {
+    fileSize: 5 * 1024 * 1024 * 1024,
+    files: 5,
+  },
+});
+
 const sanitizeUser = (user) => ({
   id: user.id,
   name: user.name,
@@ -40,6 +65,15 @@ const getAuthUser = (req, db) => {
   const session = db.sessions.find((item) => item.token === token);
   if (!session) return null;
   return db.users.find((user) => user.id === session.userId) ?? null;
+};
+
+
+const requireAuth = (req, res, next) => {
+  const db = readDb();
+  const user = getAuthUser(req, db);
+  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  req.authUser = user;
+  return next();
 };
 
 const ensureDirectChat = (db, userA, userB) => {
@@ -60,6 +94,7 @@ const ensureDirectChat = (db, userA, userB) => {
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '30mb' }));
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 app.post('/api/auth/register', (req, res) => {
   const { name, email, password } = req.body;
@@ -211,6 +246,22 @@ app.post('/api/chats/group', (req, res) => {
   return res.status(201).json({ chat });
 });
 
+
+app.post('/api/uploads', requireAuth, upload.array('files', 5), (req, res) => {
+  const files = Array.isArray(req.files) ? req.files : [];
+  const host = `${req.protocol}://${req.get('host')}`;
+
+  return res.json({
+    files: files.map((file) => ({
+      id: uuidv4(),
+      name: file.originalname,
+      type: file.mimetype || 'application/octet-stream',
+      size: file.size,
+      url: `${host}/uploads/${file.filename}`,
+    })),
+  });
+});
+
 app.post('/api/chats/:chatId/messages', (req, res) => {
   const db = readDb();
   const user = getAuthUser(req, db);
@@ -222,7 +273,7 @@ app.post('/api/chats/:chatId/messages', (req, res) => {
   const text = String(req.body.text ?? '').trim();
   const attachmentsRaw = Array.isArray(req.body.attachments) ? req.body.attachments : [];
   const attachments = attachmentsRaw
-    .filter((item) => item && typeof item.url === 'string' && item.url.startsWith('data:'))
+    .filter((item) => item && typeof item.url === 'string' && (item.url.startsWith('data:') || item.url.includes('/uploads/')))
     .slice(0, 5)
     .map((item) => ({
       id: uuidv4(),
@@ -282,4 +333,14 @@ app.delete('/api/chats/:chatId/messages/:messageId', (req, res) => {
 const PORT = 4000;
 app.listen(PORT, () => {
   console.log(`API server running on http://localhost:${PORT}`);
+});
+
+app.use((error, _req, res, next) => {
+  if (error?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: 'file too large (max 5GB)' });
+  }
+  if (error?.code === 'LIMIT_FILE_COUNT') {
+    return res.status(400).json({ error: 'too many files (max 5)' });
+  }
+  return next(error);
 });

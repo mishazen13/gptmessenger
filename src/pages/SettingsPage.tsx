@@ -36,12 +36,12 @@ export const SettingsPage = ({ me, section, onBack, onLogout, uiVersion, onAvata
   }, [previewOpen, theme]);
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/20 p-4" style={{ backgroundColor: `rgba(255,255,255,${theme.panelOpacity})`, backdropFilter: `blur(${theme.contentBlur}px)` }}>
+    <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/20 p-4" style={{ backgroundColor: `rgba(71,85,105,${theme.panelOpacity})`, backdropFilter: `blur(${theme.contentBlur}px)` }}>
       <button className="mb-3 w-fit rounded-xl bg-white/10 px-3 py-2 text-sm hover:bg-white/20" onClick={onBack} type="button">
         ← Назад
       </button>
 
-      <div className="flex-1 overflow-y-auto rounded-xl bg-white/5 p-4 pr-2">
+      <div className="flex-1 overflow-y-auto rounded-xl bg-slate-800/40 p-4 pr-2">
         {section === 'profile' && (
           <div className="space-y-3">
             <h2 className="text-lg font-semibold">Профиль</h2>

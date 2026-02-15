@@ -250,14 +250,38 @@ const App = (): JSX.Element => {
     event.preventDefault();
     if (!token || !activeChat || (!messageText.trim() && attachedFiles.length === 0)) return;
     try {
+      const localFiles = attachedFiles.filter((file) => file.localFile);
+      let uploaded: MessageAttachment[] = [];
+
+      if (localFiles.length) {
+        const formData = new FormData();
+        localFiles.forEach((file) => {
+          if (file.localFile) formData.append('files', file.localFile);
+        });
+
+        const uploadedResponse = await api<{ files: MessageAttachment[] }>('/api/uploads', {
+          method: 'POST',
+          body: formData,
+        }, token);
+        uploaded = uploadedResponse.files;
+      }
+
+      const readyAttachments = [
+        ...attachedFiles.filter((file) => !file.localFile).map((file) => ({ id: file.id, name: file.name, type: file.type, size: file.size, url: file.url })),
+        ...uploaded,
+      ];
+
       await api(`/api/chats/${activeChat.id}/messages`, {
         method: 'POST',
         body: JSON.stringify({
           text: messageText,
           replyToMessageId: replyToMessageId || undefined,
-          attachments: attachedFiles,
+          attachments: readyAttachments,
         }),
       }, token);
+      attachedFiles.forEach((file) => {
+        if (file.localFile && file.url.startsWith('blob:')) URL.revokeObjectURL(file.url);
+      });
       setMessageText('');
       setAttachedFiles([]);
       setReplyToMessageId('');
@@ -348,29 +372,27 @@ const App = (): JSX.Element => {
   const handlePickFiles = async (files: FileList | null): Promise<void> => {
     if (!files?.length) return;
     try {
-      const MAX_FILE_BYTES = 8 * 1024 * 1024;
-      const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
+      const MAX_FILE_BYTES = 5 * 1024 * 1024 * 1024;
       const allowed = Array.from(files).slice(0, 5);
       const tooBig = allowed.find((file) => file.size > MAX_FILE_BYTES);
       if (tooBig) {
-        setNotice(`Файл ${tooBig.name} слишком большой. Лимит 8 МБ на файл.`);
+        setNotice(`Файл ${tooBig.name} слишком большой. Лимит 5 ГБ на файл.`);
         return;
       }
 
-      const existingBytes = attachedFiles.reduce((sum, file) => sum + file.size, 0);
-      const pickedBytes = allowed.reduce((sum, file) => sum + file.size, 0);
-      if (existingBytes + pickedBytes > MAX_TOTAL_BYTES) {
-        setNotice('Слишком большой общий размер вложений. Лимит 20 МБ на сообщение.');
+      if (attachedFiles.length + allowed.length > 5) {
+        setNotice('Можно прикрепить не более 5 файлов к сообщению.');
         return;
       }
 
-      const nextFiles = await Promise.all(allowed.map(async (file) => ({
+      const nextFiles = allowed.map((file) => ({
         id: crypto.randomUUID(),
         name: file.name,
         type: file.type || 'application/octet-stream',
         size: file.size,
-        url: await readFileAsDataUrl(file),
-      })));
+        url: URL.createObjectURL(file),
+        localFile: file,
+      }));
       setAttachedFiles((prev) => [...prev, ...nextFiles].slice(0, 5));
     } catch (error) {
       setNotice((error as Error).message);
@@ -457,7 +479,7 @@ const App = (): JSX.Element => {
               onSend={sendMessage}
               onPickFiles={(files) => void handlePickFiles(files)}
               attachedFiles={attachedFiles}
-              onRemoveAttachedFile={(id) => setAttachedFiles((prev) => prev.filter((item) => item.id !== id))}
+              onRemoveAttachedFile={(id) => setAttachedFiles((prev) => { const removing = prev.find((item) => item.id === id); if (removing?.localFile && removing.url.startsWith('blob:')) URL.revokeObjectURL(removing.url); return prev.filter((item) => item.id !== id); })}
               theme={theme}
             />
           )}

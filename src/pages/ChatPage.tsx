@@ -69,7 +69,7 @@ export const ChatPage = ({
     : undefined;
 
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-white/20 p-4" style={{ backgroundColor: `rgba(255,255,255,${theme.panelOpacity})`, backdropFilter: `blur(${theme.contentBlur}px) saturate(${theme.saturation}%)` }}>
+    <div className="flex h-full flex-col rounded-2xl border border-white/20 p-4" style={{ backgroundColor: `rgba(71,85,105,${theme.panelOpacity})`, backdropFilter: `blur(${theme.contentBlur}px) saturate(${theme.saturation}%)` }}>
       <div className="mb-3 flex items-center gap-3">
         <Avatar imageUrl={peer ? getAvatarUrl(peer.id) : undefined} name={peer ? getDisplayName(peer) : activeChat?.name ?? 'Чат'} size={40} />
         {peer ? (
