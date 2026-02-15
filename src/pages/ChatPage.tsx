@@ -56,12 +56,13 @@ const CustomVideoPlayer = ({ file }: { file: MessageAttachment }): JSX.Element =
   };
 
   return (
-    <div className="relative rounded-xl border border-white/20 bg-black/35 p-2">
+    <div className="relative overflow-hidden rounded-xl">
       <video
         ref={ref}
         src={file.url}
-        className="max-h-64 w-full rounded-lg"
+        className="max-h-72 w-full cursor-pointer rounded-xl object-cover"
         preload="metadata"
+        onClick={toggle}
         onTimeUpdate={() => {
           if (!ref.current || !ref.current.duration) return;
           setProgress((ref.current.currentTime / ref.current.duration) * 100);
@@ -77,9 +78,9 @@ const CustomVideoPlayer = ({ file }: { file: MessageAttachment }): JSX.Element =
           ▶
         </button>
       )}
-      <div className="mt-2 flex items-center gap-2">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 to-transparent p-2">
         <input
-          className="w-full"
+          className="pointer-events-auto w-full"
           type="range"
           min={0}
           max={100}
@@ -129,26 +130,6 @@ const AudioCard = ({ file }: { file: MessageAttachment }): JSX.Element => {
   );
 };
 
-const renderAttachment = (file: MessageAttachment): JSX.Element => {
-  if (file.type.startsWith('image/')) {
-    return <img src={file.url} alt={file.name} className="max-h-72 w-full rounded-xl object-cover" />;
-  }
-  if (file.type.startsWith('video/')) {
-    return <CustomVideoPlayer file={file} />;
-  }
-  if (file.type.startsWith('audio/')) {
-    return <AudioCard file={file} />;
-  }
-
-  return (
-    <div className="rounded-xl border border-white/20 bg-slate-900/55 p-3 text-slate-200">
-      <p className="truncate text-sm font-medium">📄 {file.name}</p>
-      <p className="mt-1 text-xs text-slate-400">{file.type || 'unknown'} · {formatSize(file.size)}</p>
-      <a href={file.url} download={file.name} className="mt-2 inline-block rounded-lg bg-white/10 px-3 py-1 text-xs hover:bg-white/20">Скачать</a>
-    </div>
-  );
-};
-
 export const ChatPage = ({
   me,
   users,
@@ -171,6 +152,7 @@ export const ChatPage = ({
     ? users.find((u) => u.id !== me.id && activeChat.memberIds.includes(u.id))
     : undefined;
   const [isWide, setIsWide] = React.useState(() => window.innerWidth >= 1200);
+  const [zoomImageUrl, setZoomImageUrl] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const onResize = (): void => setIsWide(window.innerWidth >= 1200);
@@ -179,6 +161,26 @@ export const ChatPage = ({
   }, []);
 
   const myTextColor = getTextColor(theme.accentColor);
+
+  const renderAttachment = (file: MessageAttachment): JSX.Element => {
+    if (file.type.startsWith('image/')) {
+      return <img src={file.url} alt={file.name} className="max-h-72 w-full cursor-zoom-in rounded-xl object-cover" onClick={() => setZoomImageUrl(file.url)} />;
+    }
+    if (file.type.startsWith('video/')) {
+      return <CustomVideoPlayer file={file} />;
+    }
+    if (file.type.startsWith('audio/')) {
+      return <AudioCard file={file} />;
+    }
+
+    return (
+      <div className="rounded-xl border border-white/20 bg-slate-900/55 p-3 text-slate-200">
+        <p className="truncate text-sm font-medium">📄 {file.name}</p>
+        <p className="mt-1 text-xs text-slate-400">{file.type || 'unknown'} · {formatSize(file.size)}</p>
+        <a href={file.url} download={file.name} className="mt-2 inline-block rounded-lg bg-white/10 px-3 py-1 text-xs hover:bg-white/20">Скачать</a>
+      </div>
+    );
+  };
 
   return (
     <div className="flex h-full flex-col rounded-2xl border border-white/20 p-4" style={{ backgroundColor: `rgba(71,85,105,${theme.panelOpacity})`, backdropFilter: `blur(${theme.contentBlur}px) saturate(${theme.saturation}%)` }}>
@@ -246,6 +248,12 @@ export const ChatPage = ({
         </label>
         <button className="rounded-xl px-4 py-2 font-semibold" style={{ backgroundColor: theme.accentColor, color: myTextColor }} type="submit">Отправить</button>
       </form>
+
+      {zoomImageUrl && (
+        <button type="button" className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-6" onClick={() => setZoomImageUrl(null)}>
+          <img src={zoomImageUrl} alt="zoom" className="max-h-[92vh] max-w-[92vw] rounded-xl object-contain" />
+        </button>
+      )}
     </div>
   );
 };

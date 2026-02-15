@@ -69,15 +69,16 @@ export const Sidebar = ({
 
     <button className="mb-3 ml-auto h-12 w-12 rounded-xl text-2xl font-bold text-black" style={{ backgroundColor: accentColor }} onClick={onOpenPlus} type="button">+</button>
 
-    <div className="relative mt-10 rounded-xl border border-white/20 bg-slate-800/40 px-3 pb-3 pt-12">
-      <div className="absolute inset-x-0 top-0 h-14 overflow-hidden rounded-t-xl border-b border-white/10 bg-slate-900/60">
+    <div className="relative mt-10 overflow-hidden rounded-xl border border-white/20 bg-slate-800/40 px-3 pb-3 pt-12">
+      <div className="absolute inset-x-0 top-0 h-16 overflow-hidden rounded-t-xl border-b border-white/10 bg-slate-900/60">
         {bannerUrl ? <img src={bannerUrl} alt="banner" className="h-full w-full object-cover" /> : <div className="h-full w-full bg-gradient-to-r from-indigo-500/30 to-cyan-500/30" />}
       </div>
+      <div className="pointer-events-none absolute inset-x-0 top-12 h-10 bg-gradient-to-b from-transparent via-slate-900/35 to-slate-800/50" />
       <div className="absolute left-3 top-0 -translate-y-1/2">
         <Avatar imageUrl={avatarUrl} name={me.name} size={56} />
       </div>
       <div className="mb-1 flex items-start justify-between gap-2">
-        <p className="truncate pl-16 text-sm font-semibold">{me.name}</p>
+        <p className="-mt-1 truncate pl-16 text-base font-bold leading-5">{me.name}</p>
         <button className="rounded-lg bg-white/10 p-2 text-sm hover:bg-white/20" onClick={onOpenSettings} title="Настройки" type="button">⚙️</button>
       </div>
       <p className="truncate text-xs text-white/70">{me.email}</p>
