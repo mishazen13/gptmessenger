@@ -339,13 +339,12 @@ const App = (): JSX.Element => {
           onSelectChat={(id) => { setActiveChatId(id); setAppPage('chat'); }}
           onOpenPlus={() => setAppPage('plus')}
           onOpenSettings={() => setAppPage('settings')}
-          onOpenCreateGroup={() => setAppPage('create-group')}
           displayName={getDisplayName}
           uiVersion={UI_VERSION}
           avatarUrl={getAvatarUrl(me.user.id)}
         />
 
-        <section className="h-[calc(100vh-2rem)] overflow-auto">
+        <section className="h-[calc(100vh-2rem)]">
           {appPage === 'chat' && (
             <ChatPage
               me={me.user}
@@ -363,7 +362,7 @@ const App = (): JSX.Element => {
             />
           )}
 
-          {appPage === 'plus' && <PlusPage onOpenAddFriend={() => setAppPage('add-friend')} />}
+          {appPage === 'plus' && <PlusPage onOpenAddFriend={() => setAppPage('add-friend')} onOpenCreateGroup={() => setAppPage('create-group')} />}
 
           {appPage === 'add-friend' && (
             <AddFriendPage

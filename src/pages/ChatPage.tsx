@@ -36,7 +36,7 @@ export const ChatPage = ({
     : undefined;
 
   return (
-    <div className="rounded-2xl border border-white/20 bg-white/10 p-4">
+    <div className="h-full rounded-2xl border border-white/20 bg-white/10 p-4">
       <div className="mb-3 flex items-center gap-3">
         <Avatar imageUrl={peer ? getAvatarUrl(peer.id) : undefined} name={peer ? getDisplayName(peer) : activeChat?.name ?? 'Чат'} size={40} />
         {peer ? (

@@ -25,7 +25,7 @@ export const SettingsPage = ({
   onWallpaperUrl,
   onSaveAppearance,
 }: Props): JSX.Element => (
-  <div className="rounded-2xl border border-white/20 bg-white/10 p-4">
+  <div className="h-full rounded-2xl border border-white/20 bg-white/10 p-4">
     <button className="mb-3 rounded-xl bg-white/10 px-3 py-2 text-sm hover:bg-white/20" onClick={onBack} type="button">
       ← Назад
     </button>

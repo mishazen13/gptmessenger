@@ -11,7 +11,7 @@ type Props = {
 };
 
 export const CreateGroupPage = ({ groupName, onGroupName, friends, selected, onToggle, onCreateGroup }: Props): JSX.Element => (
-  <div className="rounded-2xl border border-white/20 bg-white/10 p-4">
+  <div className="h-full rounded-2xl border border-white/20 bg-white/10 p-4">
     <h2 className="mb-3 text-lg font-semibold">Создание группы</h2>
     <form className="space-y-3" onSubmit={onCreateGroup}>
       <input className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2" value={groupName} onChange={(e) => onGroupName(e.target.value)} placeholder="Название группы" />

@@ -31,7 +31,7 @@ export const FriendProfilePage = ({
   }
 
   return (
-    <div className="rounded-2xl border border-white/20 bg-white/10 p-4">
+    <div className="h-full rounded-2xl border border-white/20 bg-white/10 p-4">
       <div className="mb-5 flex flex-col items-center gap-3 text-center">
         <Avatar imageUrl={avatarUrl} name={alias || friend.name} size={72} />
         <div className="flex items-center gap-2">

@@ -13,7 +13,6 @@ type Props = {
   onSelectChat: (id: string) => void;
   onOpenPlus: () => void;
   onOpenSettings: () => void;
-  onOpenCreateGroup: () => void;
   displayName: (u: PublicUser) => string;
   uiVersion: string;
   avatarUrl?: string;
@@ -31,7 +30,6 @@ export const Sidebar = ({
   onSelectChat,
   onOpenPlus,
   onOpenSettings,
-  onOpenCreateGroup,
   displayName,
   uiVersion,
   avatarUrl,
@@ -41,12 +39,6 @@ export const Sidebar = ({
       <span>{appPage === 'settings' ? 'Разделы настроек' : 'Контакты и чаты'}</span>
       <span>{isSyncing ? 'sync...' : 'online'}</span>
     </div>
-
-    {appPage !== 'settings' && (
-      <button className="mb-3 w-full rounded-xl bg-indigo-400 px-3 py-2 text-sm font-semibold text-black" onClick={onOpenCreateGroup} type="button">
-        Создать группу
-      </button>
-    )}
 
     <div className="mb-3 flex-1 space-y-2 overflow-auto pr-1">
       {appPage === 'settings' ? (

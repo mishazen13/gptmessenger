@@ -11,7 +11,7 @@ type Props = {
 
 export const AddFriendPage = ({ friendEmail, onFriendEmail, onAddFriend, requests, onAccept }: Props): JSX.Element => {
   return (
-    <div className="space-y-4">
+    <div className="flex h-full flex-col space-y-4">
       <div className="rounded-2xl border border-white/20 bg-white/10 p-4">
         <h2 className="mb-3 text-lg font-semibold">Добавление в друзья</h2>
         <form className="flex gap-2" onSubmit={onAddFriend}>
