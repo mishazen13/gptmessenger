@@ -4,6 +4,14 @@ export type PublicUser = {
   email: string;
 };
 
+export type MessageAttachment = {
+  id: string;
+  name: string;
+  type: string;
+  url: string;
+  size: number;
+};
+
 export type Message = {
   id: string;
   senderId: string;
@@ -11,6 +19,7 @@ export type Message = {
   createdAt: number;
   replyToMessageId?: string;
   deletedForEveryone?: boolean;
+  attachments?: MessageAttachment[];
 };
 
 export type Chat = {
@@ -26,6 +35,18 @@ export type MeResponse = {
   incomingRequestIds: string[];
   friendIds: string[];
   users: PublicUser[];
+};
+
+export type ThemeSettings = {
+  accentColor: string;
+  wallpaperBlur: number;
+  panelOpacity: number;
+  sidebarOpacity: number;
+  messageOpacity: number;
+  bubbleRadius: number;
+  contentBlur: number;
+  fontScale: number;
+  saturation: number;
 };
 
 export type AppPage = 'chat' | 'plus' | 'add-friend' | 'create-group' | 'settings' | 'friend-profile';

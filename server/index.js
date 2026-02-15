@@ -218,15 +218,30 @@ app.post('/api/chats/:chatId/messages', (req, res) => {
 
   const chat = db.chats.find((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
   if (!chat) return res.status(404).json({ error: 'chat not found' });
-  if (!req.body.text?.trim()) return res.status(400).json({ error: 'text is required' });
+
+  const text = String(req.body.text ?? '').trim();
+  const attachmentsRaw = Array.isArray(req.body.attachments) ? req.body.attachments : [];
+  const attachments = attachmentsRaw
+    .filter((item) => item && typeof item.url === 'string' && item.url.startsWith('data:'))
+    .slice(0, 5)
+    .map((item) => ({
+      id: uuidv4(),
+      name: String(item.name ?? 'file'),
+      type: String(item.type ?? 'application/octet-stream'),
+      url: String(item.url),
+      size: Number(item.size ?? 0),
+    }));
+
+  if (!text && attachments.length === 0) return res.status(400).json({ error: 'text or attachments are required' });
 
   const message = {
     id: uuidv4(),
     senderId: user.id,
-    text: req.body.text.trim(),
+    text,
     createdAt: Date.now(),
     replyToMessageId: req.body.replyToMessageId || undefined,
     deletedForEveryone: false,
+    attachments,
   };
   chat.messages.push(message);
   writeDb(db);

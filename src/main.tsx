@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles.css';
 import { api } from './lib/api';
-import { AppPage, AuthPage, Chat, MeResponse, Message, MessageContextMenu, PublicUser, SettingsSection } from './types';
+import { AppPage, AuthPage, Chat, MeResponse, Message, MessageAttachment, MessageContextMenu, PublicUser, SettingsSection, ThemeSettings } from './types';
 import { AuthLoginPage } from './pages/AuthLoginPage';
 import { AuthRegisterPage } from './pages/AuthRegisterPage';
 import { Sidebar } from './components/Sidebar';
@@ -14,10 +14,22 @@ import { FriendProfilePage } from './pages/FriendProfilePage';
 import { CreateGroupPage } from './pages/CreateGroupPage';
 
 const TOKEN_KEY = 'liquid-messenger-token';
-const UI_VERSION = 'UI v4.1';
+const UI_VERSION = 'UI v5.0';
 const PREFS_KEY = 'ui-prefs-v1';
 
-type UserPrefs = { avatarUrl?: string; wallpaperUrl?: string };
+const DEFAULT_THEME: ThemeSettings = {
+  accentColor: '#22d3ee',
+  wallpaperBlur: 0,
+  panelOpacity: 0.15,
+  sidebarOpacity: 0.15,
+  messageOpacity: 0.9,
+  bubbleRadius: 16,
+  contentBlur: 14,
+  fontScale: 100,
+  saturation: 100,
+};
+
+type UserPrefs = { avatarUrl?: string; wallpaperUrl?: string; theme?: ThemeSettings };
 
 type PrefMap = Record<string, UserPrefs>;
 
@@ -55,6 +67,7 @@ const App = (): JSX.Element => {
   const [groupName, setGroupName] = React.useState('');
   const [groupSelectedFriends, setGroupSelectedFriends] = React.useState<string[]>([]);
   const [messageText, setMessageText] = React.useState('');
+  const [attachedFiles, setAttachedFiles] = React.useState<MessageAttachment[]>([]);
   const [replyToMessageId, setReplyToMessageId] = React.useState('');
   const [aliasInput, setAliasInput] = React.useState('');
   const [isEditingAlias, setIsEditingAlias] = React.useState(false);
@@ -236,10 +249,18 @@ const App = (): JSX.Element => {
 
   const sendMessage = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
-    if (!token || !activeChat || !messageText.trim()) return;
+    if (!token || !activeChat || (!messageText.trim() && attachedFiles.length === 0)) return;
     try {
-      await api(`/api/chats/${activeChat.id}/messages`, { method: 'POST', body: JSON.stringify({ text: messageText, replyToMessageId: replyToMessageId || undefined }) }, token);
+      await api(`/api/chats/${activeChat.id}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({
+          text: messageText,
+          replyToMessageId: replyToMessageId || undefined,
+          attachments: attachedFiles,
+        }),
+      }, token);
       setMessageText('');
+      setAttachedFiles([]);
       setReplyToMessageId('');
       await refreshData(true);
     } catch (error) {
@@ -294,6 +315,54 @@ const App = (): JSX.Element => {
     }
   };
 
+  const updateTheme = <K extends keyof ThemeSettings>(key: K, value: ThemeSettings[K]): void => {
+    if (!me) return;
+    const next = {
+      ...prefs,
+      [me.user.id]: {
+        ...prefs[me.user.id],
+        theme: {
+          ...DEFAULT_THEME,
+          ...(prefs[me.user.id]?.theme ?? {}),
+          [key]: value,
+        },
+      },
+    };
+    setPrefs(next);
+    savePrefs(next);
+  };
+
+  const resetTheme = (): void => {
+    if (!me) return;
+    const next = {
+      ...prefs,
+      [me.user.id]: {
+        ...prefs[me.user.id],
+        theme: DEFAULT_THEME,
+      },
+    };
+    setPrefs(next);
+    savePrefs(next);
+    setNotice('Тема сброшена.');
+  };
+
+  const handlePickFiles = async (files: FileList | null): Promise<void> => {
+    if (!files?.length) return;
+    try {
+      const allowed = Array.from(files).slice(0, 5);
+      const nextFiles = await Promise.all(allowed.map(async (file) => ({
+        id: crypto.randomUUID(),
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        size: file.size,
+        url: await readFileAsDataUrl(file),
+      })));
+      setAttachedFiles((prev) => [...prev, ...nextFiles].slice(0, 5));
+    } catch (error) {
+      setNotice((error as Error).message);
+    }
+  };
+
   if (!me) {
     return (
       <main className="min-h-screen bg-gradient-to-br from-indigo-950 via-slate-950 to-cyan-950 p-4 text-white">
@@ -320,6 +389,7 @@ const App = (): JSX.Element => {
   const friend = me.users.find((u) => u.id === friendProfileId);
   const friendDirectChat = chats.find((c) => !c.isGroup && friendProfileId && c.memberIds.includes(me.user.id) && c.memberIds.includes(friendProfileId));
   const wallpaper = prefs[me.user.id]?.wallpaperUrl;
+  const theme = { ...DEFAULT_THEME, ...(prefs[me.user.id]?.theme ?? {}) };
 
   return (
     <main
@@ -330,8 +400,11 @@ const App = (): JSX.Element => {
           : 'linear-gradient(130deg, rgb(30 27 75), rgb(2 6 23), rgb(8 47 73))',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
+        filter: `saturate(${theme.saturation}%)`,
+        fontSize: `${theme.fontScale}%`,
       }}
     >
+      <div className="absolute inset-0" style={{ backdropFilter: `blur(${theme.wallpaperBlur}px)` }} />
       <div className="relative mx-auto grid max-w-7xl gap-4 lg:grid-cols-[320px_1fr]">
         <Sidebar
           me={me.user}
@@ -348,6 +421,9 @@ const App = (): JSX.Element => {
           displayName={getDisplayName}
           uiVersion={UI_VERSION}
           avatarUrl={getAvatarUrl(me.user.id)}
+          accentColor={theme.accentColor}
+          sidebarOpacity={theme.sidebarOpacity}
+          contentBlur={theme.contentBlur}
         />
 
         <section className="h-[calc(100vh-2rem)]">
@@ -365,6 +441,10 @@ const App = (): JSX.Element => {
               messageText={messageText}
               onMessageText={setMessageText}
               onSend={sendMessage}
+              onPickFiles={(files) => void handlePickFiles(files)}
+              attachedFiles={attachedFiles}
+              onRemoveAttachedFile={(id) => setAttachedFiles((prev) => prev.filter((item) => item.id !== id))}
+              theme={theme}
             />
           )}
 
@@ -400,6 +480,9 @@ const App = (): JSX.Element => {
               uiVersion={UI_VERSION}
               onAvatarFile={(file) => void saveAppearanceFile('avatarUrl', file)}
               onWallpaperFile={(file) => void saveAppearanceFile('wallpaperUrl', file)}
+              theme={theme}
+              onTheme={updateTheme}
+              onResetTheme={resetTheme}
             />
           )}
 
