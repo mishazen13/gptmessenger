@@ -67,7 +67,7 @@ export const Sidebar = ({
 
     <button className="mb-3 ml-auto h-12 w-12 rounded-xl text-2xl font-bold text-black" style={{ backgroundColor: accentColor }} onClick={onOpenPlus} type="button">+</button>
 
-    <div className="h-28 rounded-xl bg-slate-800/40 px-3 py-3">
+    <div className="h-28 rounded-xl border border-white/20 bg-slate-800/40 px-3 py-3">
       <div className="mb-1 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <Avatar imageUrl={avatarUrl} name={me.name} size={28} />

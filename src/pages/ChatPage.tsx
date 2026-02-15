@@ -27,21 +27,113 @@ const formatSize = (size: number): string => {
   return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
 };
 
+const formatTime = (value: number): string => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+const getTextColor = (hexColor: string): string => {
+  const hex = hexColor.replace('#', '');
+  if (hex.length !== 6) return '#041314';
+  const r = Number.parseInt(hex.slice(0, 2), 16);
+  const g = Number.parseInt(hex.slice(2, 4), 16);
+  const b = Number.parseInt(hex.slice(4, 6), 16);
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luminance < 0.45 ? '#f8fafc' : '#041314';
+};
+
+const CustomVideoPlayer = ({ file }: { file: MessageAttachment }): JSX.Element => {
+  const ref = React.useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = React.useState(false);
+  const [progress, setProgress] = React.useState(0);
+
+  const toggle = (): void => {
+    if (!ref.current) return;
+    if (ref.current.paused) {
+      void ref.current.play();
+      setPlaying(true);
+    } else {
+      ref.current.pause();
+      setPlaying(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-white/20 bg-black/35 p-2">
+      <video
+        ref={ref}
+        src={file.url}
+        className="max-h-64 w-full rounded-lg"
+        preload="metadata"
+        onTimeUpdate={() => {
+          if (!ref.current || !ref.current.duration) return;
+          setProgress((ref.current.currentTime / ref.current.duration) * 100);
+        }}
+        onEnded={() => setPlaying(false)}
+      />
+      <div className="mt-2 flex items-center gap-2">
+        <button type="button" className="rounded-md bg-white/15 px-2 py-1 text-xs" onClick={toggle}>{playing ? 'Пауза' : '▶︎ Пуск'}</button>
+        <input
+          className="w-full"
+          type="range"
+          min={0}
+          max={100}
+          step={0.1}
+          value={progress}
+          onChange={(event) => {
+            if (!ref.current || !ref.current.duration) return;
+            const value = Number(event.target.value);
+            ref.current.currentTime = (value / 100) * ref.current.duration;
+            setProgress(value);
+          }}
+        />
+      </div>
+    </div>
+  );
+};
+
+const AudioCard = ({ file }: { file: MessageAttachment }): JSX.Element => {
+  const ref = React.useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = React.useState(false);
+
+  return (
+    <div className="rounded-xl border border-white/20 bg-slate-900/55 p-3 text-slate-100">
+      <audio ref={ref} src={file.url} preload="metadata" onEnded={() => setPlaying(false)} />
+      <p className="truncate text-sm font-medium">🎵 {file.name}</p>
+      <p className="mt-1 text-xs text-slate-400">{formatSize(file.size)}</p>
+      <button
+        type="button"
+        className="mt-2 rounded-lg bg-white/10 px-3 py-1 text-xs hover:bg-white/20"
+        onClick={() => {
+          if (!ref.current) return;
+          if (ref.current.paused) {
+            void ref.current.play();
+            setPlaying(true);
+          } else {
+            ref.current.pause();
+            setPlaying(false);
+          }
+        }}
+      >
+        {playing ? 'Пауза' : '▶︎ Слушать'}
+      </button>
+    </div>
+  );
+};
+
 const renderAttachment = (file: MessageAttachment): JSX.Element => {
   if (file.type.startsWith('image/')) {
-    return <img src={file.url} alt={file.name} className="max-h-56 w-full rounded-xl object-cover" />;
+    return <img src={file.url} alt={file.name} className="max-h-72 w-full rounded-xl object-cover" />;
   }
   if (file.type.startsWith('video/')) {
-    return <video src={file.url} className="max-h-56 w-full rounded-xl" controls preload="metadata" />;
+    return <CustomVideoPlayer file={file} />;
+  }
+  if (file.type.startsWith('audio/')) {
+    return <AudioCard file={file} />;
   }
 
   return (
     <div className="rounded-xl border border-white/20 bg-slate-900/55 p-3 text-slate-200">
       <p className="truncate text-sm font-medium">📄 {file.name}</p>
       <p className="mt-1 text-xs text-slate-400">{file.type || 'unknown'} · {formatSize(file.size)}</p>
-      <a href={file.url} download={file.name} className="mt-2 inline-block rounded-lg bg-white/10 px-3 py-1 text-xs hover:bg-white/20">
-        Скачать
-      </a>
+      <a href={file.url} download={file.name} className="mt-2 inline-block rounded-lg bg-white/10 px-3 py-1 text-xs hover:bg-white/20">Скачать</a>
     </div>
   );
 };
@@ -67,18 +159,21 @@ export const ChatPage = ({
   const peer = activeChat && !activeChat.isGroup
     ? users.find((u) => u.id !== me.id && activeChat.memberIds.includes(u.id))
     : undefined;
+  const [isWide, setIsWide] = React.useState(() => window.innerWidth >= 1200);
+
+  React.useEffect(() => {
+    const onResize = (): void => setIsWide(window.innerWidth >= 1200);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const myTextColor = getTextColor(theme.accentColor);
 
   return (
     <div className="flex h-full flex-col rounded-2xl border border-white/20 p-4" style={{ backgroundColor: `rgba(71,85,105,${theme.panelOpacity})`, backdropFilter: `blur(${theme.contentBlur}px) saturate(${theme.saturation}%)` }}>
       <div className="mb-3 flex items-center gap-3">
         <Avatar imageUrl={peer ? getAvatarUrl(peer.id) : undefined} name={peer ? getDisplayName(peer) : activeChat?.name ?? 'Чат'} size={40} />
-        {peer ? (
-          <button className="text-left text-lg font-semibold hover:underline" onClick={() => onOpenFriendProfile(peer.id)} type="button">
-            {getDisplayName(peer)}
-          </button>
-        ) : (
-          <h2 className="text-lg font-semibold">{activeChat?.name ?? 'Чат'}</h2>
-        )}
+        {peer ? <button className="text-left text-lg font-semibold hover:underline" onClick={() => onOpenFriendProfile(peer.id)} type="button">{getDisplayName(peer)}</button> : <h2 className="text-lg font-semibold">{activeChat?.name ?? 'Чат'}</h2>}
       </div>
 
       <div className="mb-3 flex-1 w-full space-y-2 overflow-auto rounded-2xl bg-transparent p-1">
@@ -87,13 +182,15 @@ export const ChatPage = ({
           const sender = users.find((u) => u.id === message.senderId);
           const replyTo = activeChat.messages.find((m) => m.id === message.replyToMessageId);
           const mine = message.senderId === me.id;
+          const hasMedia = Boolean(message.attachments?.some((file) => file.type.startsWith('image/') || file.type.startsWith('video/') || file.type.startsWith('audio/')));
           return (
             <article
-              className="max-w-[78%] px-3 py-2 text-sm"
+              className="w-fit break-words px-3 py-2 text-sm whitespace-pre-wrap"
               style={{
-                marginLeft: mine ? 'auto' : undefined,
+                marginLeft: !isWide && mine ? 'auto' : undefined,
+                maxWidth: hasMedia ? 'min(92%, 620px)' : 'min(85%, 760px)',
                 backgroundColor: mine ? `${theme.accentColor}CC` : 'rgba(255,255,255,0.15)',
-                color: mine ? '#041314' : '#d1d5db',
+                color: mine ? myTextColor : '#d1d5db',
                 borderRadius: `${theme.bubbleRadius}px`,
               }}
               key={message.id}
@@ -102,14 +199,11 @@ export const ChatPage = ({
               <div className="mb-1 flex items-center gap-2 text-xs opacity-80">
                 <Avatar imageUrl={sender ? getAvatarUrl(sender.id) : undefined} name={sender ? getDisplayName(sender) : 'Unknown'} size={20} />
                 <span>{sender ? getDisplayName(sender) : 'Unknown'}</span>
+                <span className="ml-auto text-[11px] opacity-80">{formatTime(message.createdAt)}</span>
               </div>
               {replyTo && <div className="mb-1 rounded-lg border border-black/20 bg-black/10 px-2 py-1 text-xs">↪ {replyTo.text || 'медиа'}</div>}
-              {message.text && <p className="mb-2">{message.text}</p>}
-              {!!message.attachments?.length && (
-                <div className="space-y-2">
-                  {message.attachments.map((file) => <div key={file.id}>{renderAttachment(file)}</div>)}
-                </div>
-              )}
+              {message.text && <p className="mb-2 break-words whitespace-pre-wrap">{message.text}</p>}
+              {!!message.attachments?.length && <div className="space-y-2">{message.attachments.map((file) => <div key={file.id}>{renderAttachment(file)}</div>)}</div>}
             </article>
           );
         })}
@@ -135,11 +229,11 @@ export const ChatPage = ({
 
       <form className="mt-auto flex gap-2" onSubmit={onSend}>
         <input className="flex-1 rounded-xl border border-white/20 bg-white/10 px-3 py-2" value={messageText} onChange={(e) => onMessageText(e.target.value)} placeholder="Введите сообщение..." />
-        <label className="cursor-pointer rounded-xl px-3 py-2 font-semibold text-black" style={{ backgroundColor: theme.accentColor }}>
+        <label className="cursor-pointer rounded-xl px-3 py-2 font-semibold" style={{ backgroundColor: theme.accentColor, color: myTextColor }}>
           📎
-          <input className="hidden" type="file" multiple accept="image/*,video/*,.pdf,.txt,.zip,.doc,.docx,.xlsx" onChange={(e) => onPickFiles(e.target.files)} />
+          <input className="hidden" type="file" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.zip,.doc,.docx,.xlsx" onChange={(e) => onPickFiles(e.target.files)} />
         </label>
-        <button className="rounded-xl px-4 py-2 font-semibold text-black" style={{ backgroundColor: theme.accentColor }} type="submit">Отправить</button>
+        <button className="rounded-xl px-4 py-2 font-semibold" style={{ backgroundColor: theme.accentColor, color: myTextColor }} type="submit">Отправить</button>
       </form>
     </div>
   );
