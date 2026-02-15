@@ -233,6 +233,20 @@ app.post('/api/chats/:chatId/messages', (req, res) => {
   return res.status(201).json({ message });
 });
 
+
+app.delete('/api/chats/:chatId/messages', (req, res) => {
+  const db = readDb();
+  const user = getAuthUser(req, db);
+  if (!user) return res.status(401).json({ error: 'unauthorized' });
+
+  const chat = db.chats.find((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
+  if (!chat) return res.status(404).json({ error: 'chat not found' });
+
+  chat.messages = [];
+  writeDb(db);
+  return res.json({ ok: true });
+});
+
 app.delete('/api/chats/:chatId/messages/:messageId', (req, res) => {
   const db = readDb();
   const user = getAuthUser(req, db);
