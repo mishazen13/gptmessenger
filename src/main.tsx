@@ -254,18 +254,42 @@ const App = (): JSX.Element => {
       let uploaded: MessageAttachment[] = [];
 
       if (localFiles.length) {
-        const formData = new FormData();
-        localFiles.forEach((file) => {
-          if (file.localFile) formData.append('files', file.localFile);
-        });
-
         const env = (import.meta as ImportMeta & { env?: Record<string, string | boolean> }).env;
         const uploadBase = env?.DEV ? String(env.VITE_API_URL ?? 'http://localhost:4000') : '';
-        const uploadedResponse = await api<{ files: MessageAttachment[] }>(`${uploadBase}/api/uploads`, {
-          method: 'POST',
-          body: formData,
-        }, token);
-        uploaded = uploadedResponse.files;
+        const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+        uploaded = await Promise.all(localFiles.map(async (file) => {
+          const currentFile = file.localFile as File;
+          const started = await api<{ uploadId: string }>(`${uploadBase}/api/uploads/chunk/start`, {
+            method: 'POST',
+            body: JSON.stringify({ name: currentFile.name, type: currentFile.type, size: currentFile.size }),
+          }, token);
+
+          const CHUNK_SIZE = 10 * 1024 * 1024;
+          let offset = 0;
+          while (offset < currentFile.size) {
+            const blob = currentFile.slice(offset, offset + CHUNK_SIZE);
+            const chunkBuffer = await blob.arrayBuffer();
+            const response = await fetch(`${uploadBase}/api/uploads/chunk/${started.uploadId}`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/octet-stream',
+                ...authHeader,
+              },
+              body: chunkBuffer,
+            });
+            if (!response.ok) {
+              const payload = (await response.json().catch(() => ({}))) as { error?: string };
+              throw new Error(payload.error ?? 'chunk upload failed');
+            }
+            offset += blob.size;
+          }
+
+          const finished = await api<{ file: MessageAttachment }>(`${uploadBase}/api/uploads/chunk/${started.uploadId}/finish`, {
+            method: 'POST',
+          }, token);
+          return finished.file;
+        }));
       }
 
       const readyAttachments = [
