@@ -62,6 +62,8 @@ const upload = multerLib
     })
   : null;
 
+const uploadSessions = new Map();
+
 const sanitizeUser = (user) => ({
   id: user.id,
   name: user.name,
@@ -253,6 +255,59 @@ app.post('/api/chats/group', (req, res) => {
   db.chats.push(chat);
   writeDb(db);
   return res.status(201).json({ chat });
+});
+
+
+app.post('/api/uploads/chunk/start', requireAuth, (req, res) => {
+  const { name, type, size } = req.body ?? {};
+  if (!name || !size) return res.status(400).json({ error: 'name and size are required' });
+  const uploadId = uuidv4();
+  const tempName = `${uploadId}.part`;
+  const tempPath = path.join(UPLOADS_DIR, tempName);
+  fs.writeFileSync(tempPath, '');
+  uploadSessions.set(uploadId, {
+    tempPath,
+    name: String(name),
+    type: String(type ?? 'application/octet-stream'),
+    size: Number(size),
+    received: 0,
+  });
+  return res.json({ uploadId });
+});
+
+app.post('/api/uploads/chunk/:uploadId', requireAuth, express.raw({ type: 'application/octet-stream', limit: '25mb' }), (req, res) => {
+  const session = uploadSessions.get(req.params.uploadId);
+  if (!session) return res.status(404).json({ error: 'upload session not found' });
+  const chunk = req.body;
+  if (!Buffer.isBuffer(chunk)) return res.status(400).json({ error: 'invalid chunk' });
+  fs.appendFileSync(session.tempPath, chunk);
+  session.received += chunk.length;
+  return res.json({ received: session.received });
+});
+
+app.post('/api/uploads/chunk/:uploadId/finish', requireAuth, (req, res) => {
+  const session = uploadSessions.get(req.params.uploadId);
+  if (!session) return res.status(404).json({ error: 'upload session not found' });
+  if (session.received !== session.size) {
+    return res.status(400).json({ error: `incomplete upload: received ${session.received} of ${session.size}` });
+  }
+
+  const ext = path.extname(session.name || '');
+  const finalName = `${uuidv4()}${ext}`;
+  const finalPath = path.join(UPLOADS_DIR, finalName);
+  fs.renameSync(session.tempPath, finalPath);
+  uploadSessions.delete(req.params.uploadId);
+
+  const host = `${req.protocol}://${req.get('host')}`;
+  return res.json({
+    file: {
+      id: uuidv4(),
+      name: session.name,
+      type: session.type,
+      size: session.size,
+      url: `${host}/uploads/${finalName}`,
+    },
+  });
 });
 
 
