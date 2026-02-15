@@ -259,7 +259,9 @@ const App = (): JSX.Element => {
           if (file.localFile) formData.append('files', file.localFile);
         });
 
-        const uploadedResponse = await api<{ files: MessageAttachment[] }>('/api/uploads', {
+        const env = (import.meta as ImportMeta & { env?: Record<string, string | boolean> }).env;
+        const uploadBase = env?.DEV ? String(env.VITE_API_URL ?? 'http://localhost:4000') : '';
+        const uploadedResponse = await api<{ files: MessageAttachment[] }>(`${uploadBase}/api/uploads`, {
           method: 'POST',
           body: formData,
         }, token);
