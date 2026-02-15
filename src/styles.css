@@ -20,3 +20,24 @@
   background: rgba(255, 255, 255, 0.4);
   border-radius: 9999px;
 }
+
+.accent-color-picker {
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  cursor: pointer;
+}
+
+.accent-color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.accent-color-picker::-webkit-color-swatch {
+  border: none;
+  border-radius: 0.9rem;
+}
+
+.accent-color-picker::-moz-color-swatch {
+  border: none;
+  border-radius: 0.9rem;
+}
