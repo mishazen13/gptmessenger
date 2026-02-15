@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { v4 as uuidv4 } from 'uuid';
-import multer from 'multer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,19 +38,29 @@ const ensureUploadsDir = () => {
 
 ensureUploadsDir();
 
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-    filename: (_req, file, cb) => {
-      const ext = path.extname(file.originalname || '');
-      cb(null, `${uuidv4()}${ext}`);
-    },
-  }),
-  limits: {
-    fileSize: 5 * 1024 * 1024 * 1024,
-    files: 5,
-  },
-});
+let multerLib = null;
+try {
+  const loaded = await import('multer');
+  multerLib = loaded.default;
+} catch {
+  multerLib = null;
+}
+
+const upload = multerLib
+  ? multerLib({
+      storage: multerLib.diskStorage({
+        destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+        filename: (_req, file, cb) => {
+          const ext = path.extname(file.originalname || '');
+          cb(null, `${uuidv4()}${ext}`);
+        },
+      }),
+      limits: {
+        fileSize: 5 * 1024 * 1024 * 1024,
+        files: 5,
+      },
+    })
+  : null;
 
 const sanitizeUser = (user) => ({
   id: user.id,
@@ -247,20 +256,26 @@ app.post('/api/chats/group', (req, res) => {
 });
 
 
-app.post('/api/uploads', requireAuth, upload.array('files', 5), (req, res) => {
-  const files = Array.isArray(req.files) ? req.files : [];
-  const host = `${req.protocol}://${req.get('host')}`;
-
-  return res.json({
-    files: files.map((file) => ({
-      id: uuidv4(),
-      name: file.originalname,
-      type: file.mimetype || 'application/octet-stream',
-      size: file.size,
-      url: `${host}/uploads/${file.filename}`,
-    })),
+if (!upload) {
+  app.post('/api/uploads', requireAuth, (_req, res) => {
+    return res.status(503).json({ error: 'uploads unavailable: run npm install to install multer' });
   });
-});
+} else {
+  app.post('/api/uploads', requireAuth, upload.array('files', 5), (req, res) => {
+    const files = Array.isArray(req.files) ? req.files : [];
+    const host = `${req.protocol}://${req.get('host')}`;
+
+    return res.json({
+      files: files.map((file) => ({
+        id: uuidv4(),
+        name: file.originalname,
+        type: file.mimetype || 'application/octet-stream',
+        size: file.size,
+        url: `${host}/uploads/${file.filename}`,
+      })),
+    });
+  });
+}
 
 app.post('/api/chats/:chatId/messages', (req, res) => {
   const db = readDb();
