@@ -13,7 +13,6 @@ type Props = {
   getDisplayName: (user: PublicUser) => string;
   getAvatarUrl: (userId: string) => string | undefined;
   onOpenFriendProfile: (id: string) => void;
-  onOpenGroupProfile?: (id: string) => void;
   onContextMenu: (event: React.MouseEvent<HTMLElement>, chatId: string, message: Message, mine: boolean) => void;
   replyToMessageId: string;
   onClearReply: () => void;
