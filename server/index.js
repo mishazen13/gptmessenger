@@ -113,6 +113,11 @@ const io = new Server(server, {
 
 // Хранилище активных пользователей
 const onlineUsers = new Map();
+const userPresence = new Map();
+
+const emitPresence = () => {
+  io.emit('presence:update', Object.fromEntries(userPresence.entries()));
+};
 
 // Socket.io middleware
 io.use((socket, next) => {
@@ -136,9 +141,21 @@ io.on('connection', (socket) => {
   console.log(`User connected: ${user.name} (${user.id})`);
   
   onlineUsers.set(user.id, { socketId: socket.id, user });
+  const previousPresence = userPresence.get(user.id);
+  userPresence.set(user.id, {
+    status: previousPresence?.manual ? previousPresence.status : 'online',
+    manual: previousPresence?.manual ?? false,
+  });
   
   // Отправляем всем обновленный список онлайн пользователей
   io.emit('users:online', Array.from(onlineUsers.values()).map(u => u.user.id));
+  emitPresence();
+
+  socket.on('presence:set', ({ status, manual }) => {
+    if (!['online', 'offline', 'dnd'].includes(status)) return;
+    userPresence.set(user.id, { status, manual: Boolean(manual) });
+    emitPresence();
+  });
   
   // Обработка звонков
   socket.on('call:start', ({ to, type }) => {
@@ -193,7 +210,13 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${user.name}`);
     onlineUsers.delete(user.id);
+    const existingPresence = userPresence.get(user.id);
+    userPresence.set(user.id, {
+      status: existingPresence?.manual ? existingPresence.status : 'offline',
+      manual: existingPresence?.manual ?? false,
+    });
     io.emit('users:online', Array.from(onlineUsers.values()).map(u => u.user.id));
+    emitPresence();
   });
 });
 

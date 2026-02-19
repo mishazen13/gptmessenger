@@ -1,19 +1,7 @@
-// components/CallOverlay.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import { CallParticipant, CallType } from '../types';
 import { Avatar } from './Avatar';
-import { 
-  MdCallEnd, 
-  MdMic, 
-  MdMicOff, 
-  MdVideocam, 
-  MdVideocamOff,
-  MdVolumeUp,
-  MdClose,
-  MdExpandLess,
-  MdExpandMore
-} from 'react-icons/md';
-import { FiCameraOff } from 'react-icons/fi';
+import { MdCallEnd, MdMic, MdMicOff, MdVideocam, MdVideocamOff, MdVolumeUp, MdClose, MdExpandLess, MdExpandMore } from 'react-icons/md';
 
 type Props = {
   isOpen: boolean;
@@ -26,8 +14,70 @@ type Props = {
   onEndCall: () => void;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
-  localVideoRef?: React.RefObject<HTMLVideoElement>;
+  localStream?: MediaStream | null;
   remoteStreams?: Map<string, MediaStream>;
+};
+
+const ParticipantTile = ({ participant, isLocal, stream, isVideoCall }: { participant: CallParticipant; isLocal: boolean; stream?: MediaStream; isVideoCall: boolean }): JSX.Element => {
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const [audioLevel, setAudioLevel] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!videoRef.current || !stream) return;
+    videoRef.current.srcObject = stream;
+  }, [stream]);
+
+  React.useEffect(() => {
+    if (!stream) return;
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!audioTrack) return;
+
+    const audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(stream);
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+
+    let raf = 0;
+    const loop = (): void => {
+      analyser.getByteFrequencyData(data);
+      const avg = data.reduce((acc, v) => acc + v, 0) / data.length / 255;
+      setAudioLevel(avg);
+      raf = requestAnimationFrame(loop);
+    };
+    loop();
+
+    return () => {
+      cancelAnimationFrame(raf);
+      void audioContext.close();
+    };
+  }, [stream]);
+
+  const hasVideo = isVideoCall && participant.isVideoEnabled && stream?.getVideoTracks().length;
+
+  return (
+    <div className={`relative aspect-video overflow-hidden rounded-xl border-2 ${audioLevel > 0.06 ? 'border-green-400' : 'border-transparent'} bg-slate-900/50`}>
+      {hasVideo ? (
+        <video ref={videoRef} autoPlay playsInline muted={isLocal} className="h-full w-full object-cover" />
+      ) : (
+        <div className="grid h-full place-items-center bg-gradient-to-br from-indigo-900/60 to-cyan-900/60">
+          <Avatar name={participant.name} imageUrl={participant.avatarUrl} size={64} />
+        </div>
+      )}
+
+      {!participant.isMuted && audioLevel > 0.06 && (
+        <div className="absolute bottom-0 left-0 h-1 bg-green-400" style={{ width: `${Math.min(100, audioLevel * 160)}%` }} />
+      )}
+
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+        <div className="flex items-center justify-between text-xs">
+          <span>{participant.name}{isLocal ? ' (Вы)' : ''}</span>
+          {!participant.isMuted && audioLevel > 0.06 && <MdVolumeUp className="text-green-300" />}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export const CallOverlay = ({
@@ -41,188 +91,46 @@ export const CallOverlay = ({
   onEndCall,
   isExpanded = true,
   onToggleExpand,
-  localVideoRef,
+  localStream,
   remoteStreams = new Map(),
 }: Props): JSX.Element | null => {
-  const [expandedParticipant, setExpandedParticipant] = useState<string | null>(null);
-  const [audioLevels, setAudioLevels] = useState<Map<string, number>>(new Map());
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    // Симуляция уровня звука для демо
-    const interval = setInterval(() => {
-      const newLevels = new Map();
-      participants.forEach(p => {
-        // Случайный уровень звука для демонстрации
-        newLevels.set(p.userId, Math.random());
-      });
-      setAudioLevels(newLevels);
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [isOpen, participants]);
-
   if (!isOpen) return null;
 
-  const localParticipant = participants.find(p => p.userId === localParticipantId);
-  const remoteParticipants = participants.filter(p => p.userId !== localParticipantId);
-  const isVideoCall = callType === 'video';
-
-  const renderParticipant = (participant: CallParticipant, isLocal: boolean = false) => {
-    const hasVideo = isVideoCall && participant.isVideoEnabled;
-    const isExpandedParticipant = expandedParticipant === participant.userId;
-    const audioLevel = audioLevels.get(participant.userId) || 0;
-    const isSpeaking = audioLevel > 0.1;
-
-    return (
-      <div 
-        key={participant.userId}
-        className={`
-          relative rounded-xl overflow-hidden bg-slate-900/60 backdrop-blur-sm
-          transition-all duration-300 border-2 cursor-pointer
-          ${isExpandedParticipant ? 'col-span-2 row-span-2' : ''}
-          ${isSpeaking ? 'border-green-400' : 'border-transparent'}
-          aspect-video
-        `}
-        onClick={() => setExpandedParticipant(isExpandedParticipant ? null : participant.userId)}
-      >
-        {hasVideo ? (
-          <div className="w-full h-full bg-gradient-to-br from-indigo-900 to-cyan-900 flex items-center justify-center">
-            <span className="text-white/50">
-              {isLocal ? 'Ваше видео' : `Видео ${participant.name}`}
-            </span>
-          </div>
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-900/50 to-cyan-900/50">
-            <Avatar 
-              name={participant.name}
-              imageUrl={participant.avatarUrl}
-              size={isExpandedParticipant ? 96 : 48}
-            />
-          </div>
-        )}
-
-        {/* Индикатор уровня звука */}
-        {isSpeaking && !participant.isMuted && (
-          <div 
-            className="absolute bottom-0 left-0 h-1 bg-green-400" 
-            style={{ width: `${audioLevel * 100}%` }} 
-          />
-        )}
-
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-white font-medium truncate">
-              {participant.name} {isLocal && '(Вы)'}
-            </span>
-            <div className="flex gap-1">
-              {!hasVideo && isVideoCall && (
-                <span className="bg-slate-800/80 rounded-full p-0.5">
-                  <FiCameraOff size={10} className="text-slate-400" />
-                </span>
-              )}
-              {participant.isMuted ? (
-                <span className="bg-slate-800/80 rounded-full p-0.5">
-                  <MdMicOff size={10} className="text-red-400" />
-                </span>
-              ) : (
-                isSpeaking && (
-                  <span className="bg-green-500/80 rounded-full p-0.5">
-                    <MdVolumeUp size={10} className="text-white" />
-                  </span>
-                )
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  const localParticipant = participants.find((p) => p.userId === localParticipantId);
+  const remoteParticipants = participants.filter((p) => p.userId !== localParticipantId);
 
   return (
-    <div className="w-full h-full">
-      <div className="flex items-center justify-between px-4 py-2 bg-white/5 border-b border-white/10">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-          <h3 className="text-sm font-medium">
-            {isVideoCall ? '📹 Видеозвонок' : '🎧 Звонок'} • {participants.length} участников
-          </h3>
-        </div>
+    <div className="h-full w-full">
+      <div className="flex items-center justify-between border-b border-white/10 bg-white/5 px-4 py-2">
+        <h3 className="text-sm">{callType === 'video' ? '📹 Видеозвонок' : '🎧 Аудиозвонок'}</h3>
         <div className="flex gap-1">
           {onToggleExpand && (
-            <button
-              onClick={onToggleExpand}
-              className="p-1 rounded-full hover:bg-white/10 transition"
-              title={isExpanded ? "Свернуть" : "Развернуть"}
-              type="button"
-            >
+            <button onClick={onToggleExpand} className="rounded-full p-1 hover:bg-white/10" type="button">
               {isExpanded ? <MdExpandLess size={18} /> : <MdExpandMore size={18} />}
             </button>
           )}
-          <button
-            onClick={onClose}
-            className="p-1 rounded-full hover:bg-white/10 transition"
-            title="Свернуть в трей"
-            type="button"
-          >
-            <MdClose size={18} />
-          </button>
+          <button onClick={onClose} className="rounded-full p-1 hover:bg-white/10" type="button"><MdClose size={18} /></button>
         </div>
       </div>
 
-      <div className="p-3">
-        <div className={`
-          grid gap-2
-          ${remoteParticipants.length === 1 
-            ? 'grid-cols-1 md:grid-cols-2' 
-            : 'grid-cols-2 md:grid-cols-3'
-          }
-        `}>
-          {remoteParticipants.map(p => renderParticipant(p))}
+      <div className="space-y-2 p-3">
+        <ParticipantTile participant={localParticipant!} isLocal stream={localStream ?? undefined} isVideoCall={callType === 'video'} />
+        <div className="grid gap-2 md:grid-cols-2">
+          {remoteParticipants.map((p) => (
+            <ParticipantTile key={p.userId} participant={p} isLocal={false} stream={remoteStreams.get(p.userId)} isVideoCall={callType === 'video'} />
+          ))}
         </div>
 
-        <div className="mt-3 flex items-center justify-center gap-3 pt-2 border-t border-white/10">
-          <button
-            onClick={onToggleMute}
-            className={`
-              p-2 rounded-full transition-all
-              ${localParticipant?.isMuted 
-                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
-                : 'bg-white/10 text-white hover:bg-white/20'
-              }
-            `}
-            type="button"
-            title={localParticipant?.isMuted ? "Включить микрофон" : "Отключить микрофон"}
-          >
+        <div className="mt-2 flex items-center justify-center gap-3 border-t border-white/10 pt-2">
+          <button onClick={onToggleMute} className={`rounded-full p-2 ${localParticipant?.isMuted ? 'bg-red-500/20 text-red-400' : 'bg-white/10'}`} type="button">
             {localParticipant?.isMuted ? <MdMicOff size={18} /> : <MdMic size={18} />}
           </button>
-
-          {isVideoCall && (
-            <button
-              onClick={onToggleVideo}
-              className={`
-                p-2 rounded-full transition-all
-                ${!localParticipant?.isVideoEnabled
-                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                  : 'bg-white/10 text-white hover:bg-white/20'
-                }
-              `}
-              type="button"
-              title={localParticipant?.isVideoEnabled ? "Отключить камеру" : "Включить камеру"}
-            >
+          {callType === 'video' && (
+            <button onClick={onToggleVideo} className={`rounded-full p-2 ${localParticipant?.isVideoEnabled ? 'bg-white/10' : 'bg-red-500/20 text-red-400'}`} type="button">
               {localParticipant?.isVideoEnabled ? <MdVideocam size={18} /> : <MdVideocamOff size={18} />}
             </button>
           )}
-
-          <button
-            onClick={onEndCall}
-            className="p-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition-all hover:scale-110"
-            type="button"
-            title="Завершить звонок"
-          >
-            <MdCallEnd size={18} />
-          </button>
+          <button onClick={onEndCall} className="rounded-full bg-red-500 p-2 text-white" type="button"><MdCallEnd size={18} /></button>
         </div>
       </div>
     </div>
