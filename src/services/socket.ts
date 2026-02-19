@@ -2,13 +2,22 @@ import { io, Socket } from 'socket.io-client';
 
 const resolveSocketUrl = (): string => {
   const env = (import.meta as ImportMeta & { env?: Record<string, string | boolean> }).env;
-  const configured = env?.VITE_SOCKET_URL;
+  const configuredSocketUrl = env?.VITE_SOCKET_URL;
+  const configuredApiUrl = env?.VITE_API_URL;
 
-  if (typeof configured === 'string' && configured.trim()) {
-    return configured;
+  if (typeof configuredSocketUrl === 'string' && configuredSocketUrl.trim()) {
+    return configuredSocketUrl;
+  }
+
+  if (typeof configuredApiUrl === 'string' && configuredApiUrl.trim()) {
+    return configuredApiUrl;
   }
 
   if (typeof window !== 'undefined') {
+    const isDevPort = window.location.port === '5173';
+    if (isDevPort) {
+      return `${window.location.protocol}//${window.location.hostname}:4000`;
+    }
     return window.location.origin;
   }
 
