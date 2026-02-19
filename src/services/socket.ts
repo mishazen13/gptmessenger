@@ -5,6 +5,7 @@ class SocketService {
   private socket: Socket | null = null;
 
   connect(token: string) {
+<<<<<<< Updated upstream
     if (this.socket?.connected) {
       console.log('Socket already connected');
       return this.socket;
@@ -26,6 +27,17 @@ class SocketService {
       withCredentials: true,
       path: '/socket.io',
       forceNew: true
+=======
+    if (this.socket?.connected) return this.socket;
+    
+    this.socket = io('http://192.168.0.106:4000', {
+      auth: { token },
+      transports: ['websocket', 'polling'], // Добавьте polling как запасной вариант
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 10000
+>>>>>>> Stashed changes
     });
 
     this.socket.on('connect', () => {
@@ -33,11 +45,19 @@ class SocketService {
     });
 
     this.socket.on('connect_error', (error) => {
+<<<<<<< Updated upstream
       console.error('❌ Socket connection error:', error.message);
     });
 
     this.socket.on('disconnect', (reason) => {
       console.log('🔌 Socket disconnected:', reason);
+=======
+      console.error('Socket connection error:', error);
+    });
+
+    this.socket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
+>>>>>>> Stashed changes
     });
 
     return this.socket;

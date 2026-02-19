@@ -1,4 +1,9 @@
 // services/webrtc.ts
+// Добавьте в начало файла:
+import { Buffer } from 'buffer';
+window.Buffer = Buffer;
+
+// Остальной код...
 import Peer from 'simple-peer';
 
 class WebRTCService {

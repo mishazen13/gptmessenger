@@ -1,7 +1,13 @@
 // components/IncomingCallModal.tsx
 import React from 'react';
 import { Avatar } from './Avatar';
+<<<<<<< Updated upstream
 import { MdCall, MdCallEnd } from 'react-icons/md';
+=======
+import { MdCall } from 'react-icons/md';
+// IncomingCallModal.tsx - добавьте в начало:
+import React from 'react';
+>>>>>>> Stashed changes
 
 type Props = {
   isOpen: boolean;

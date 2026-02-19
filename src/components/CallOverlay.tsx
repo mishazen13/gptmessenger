@@ -257,7 +257,7 @@ export const CallOverlay = ({
               remoteStreams.forEach((stream, userId) => {
                 const audio = new Audio();
                 audio.srcObject = stream;
-                audio.play().catch(e => console.log('Manual play error:', e));
+                audio.play().catch(e => console.log('Manual play error:', e)); 
               });
             }}
             className="text-xs bg-blue-500 px-2 py-1 rounded"

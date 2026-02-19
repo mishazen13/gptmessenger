@@ -148,6 +148,7 @@ const App = (): JSX.Element => {
       if (!silent) setIsSyncing(false);
     }
   }, [token]);
+  
 
   React.useEffect(() => {
     if (!token) {

@@ -13,13 +13,23 @@ export default defineConfig({
     port: 5173,
   },
   define: {
+<<<<<<< Updated upstream
     global: 'globalThis',
+=======
+    'global': 'globalThis',
+    'process.env': {},
+    'Buffer': 'globalThis.Buffer'
+>>>>>>> Stashed changes
   },
   resolve: {
     alias: {
       buffer: 'buffer/',
       process: 'process/browser',
+<<<<<<< Updated upstream
       util: 'util/',
+=======
+      util: 'util/'
+>>>>>>> Stashed changes
     },
   },
   optimizeDeps: {
