@@ -157,15 +157,17 @@ io.on('connection', (socket) => {
     emitPresence();
   });
   
-  // Обработка звонков
+  // Обработка звонков - ИСПРАВЛЕНО!
   socket.on('call:start', ({ to, type }) => {
     const target = onlineUsers.get(to);
     if (target) {
+      console.log(`📞 Call started from ${user.name} to ${target.user.name}`);
       io.to(target.socketId).emit('call:incoming', {
         from: user.id,
-        fromName: user.name,
+        fromName: user.name, // ОБЯЗАТЕЛЬНО отправляем имя!
         fromAvatar: null,
-        type
+        type,
+        chatId: null
       });
     }
   });
@@ -173,6 +175,7 @@ io.on('connection', (socket) => {
   socket.on('call:accept', ({ from }) => {
     const target = onlineUsers.get(from);
     if (target) {
+      console.log(`📞 Call accepted by ${user.name} from ${target.user.name}`);
       io.to(target.socketId).emit('call:accepted', {
         to: user.id
       });
@@ -182,6 +185,7 @@ io.on('connection', (socket) => {
   socket.on('call:reject', ({ from }) => {
     const target = onlineUsers.get(from);
     if (target) {
+      console.log(`📞 Call rejected by ${user.name}`);
       io.to(target.socketId).emit('call:rejected', {
         to: user.id
       });
@@ -191,6 +195,7 @@ io.on('connection', (socket) => {
   socket.on('call:end', ({ to }) => {
     const target = onlineUsers.get(to);
     if (target) {
+      console.log(`📞 Call ended between ${user.name} and ${target.user.name}`);
       io.to(target.socketId).emit('call:ended', {
         from: user.id
       });
@@ -200,6 +205,7 @@ io.on('connection', (socket) => {
   socket.on('signal', ({ to, signal }) => {
     const target = onlineUsers.get(to);
     if (target) {
+      console.log(`📡 Signal from ${user.name} to ${target.user.name} type:`, signal.type);
       io.to(target.socketId).emit('signal', {
         from: user.id,
         signal

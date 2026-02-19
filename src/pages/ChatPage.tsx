@@ -12,7 +12,6 @@ type Props = {
   activeChat?: Chat;
   getDisplayName: (user: PublicUser) => string;
   getAvatarUrl: (userId: string) => string | undefined;
-  onOpenFriendProfile: (id: string) => void;
   onContextMenu: (event: React.MouseEvent<HTMLElement>, chatId: string, message: Message, mine: boolean) => void;
   replyToMessageId: string;
   onClearReply: () => void;
@@ -35,6 +34,8 @@ type Props = {
   onToggleCallExpand: () => void;
   localStream?: MediaStream | null;
   remoteStreams: Map<string, MediaStream>;
+  onOpenFriendProfile: (id: string) => void;
+  onOpenGroupProfile?: (id: string) => void;
 };
 
 const formatTime = (value: number): string => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

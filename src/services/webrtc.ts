@@ -1,12 +1,6 @@
 // services/webrtc.ts
 import Peer from 'simple-peer';
 
-export interface PeerConnection {
-  peerId: string;
-  peer: Peer.Instance;
-  stream?: MediaStream;
-}
-
 class WebRTCService {
   private peers: Map<string, Peer.Instance> = new Map();
   private localStream: MediaStream | null = null;
@@ -14,14 +8,23 @@ class WebRTCService {
   private onCallEndCallbacks: (() => void)[] = [];
 
   async initLocalStream(videoEnabled: boolean = false): Promise<MediaStream> {
+    if (this.localStream && this.localStream.active) {
+      console.log('📹 Reusing existing local stream');
+      return this.localStream;
+    }
+
     try {
+      console.log('📹 Requesting media with constraints:', { audio: true, video: videoEnabled });
+      
       this.localStream = await navigator.mediaDevices.getUserMedia({
         audio: true,
         video: videoEnabled
       });
+      
+      console.log('📹 Media stream obtained successfully, tracks:', this.localStream.getTracks().length);
       return this.localStream;
     } catch (error) {
-      console.error('Failed to get user media:', error);
+      console.error('❌ Failed to get user media:', error);
       throw error;
     }
   }
@@ -34,6 +37,7 @@ class WebRTCService {
     if (this.localStream) {
       this.localStream.getAudioTracks().forEach(track => {
         track.enabled = enabled;
+        console.log(`🔊 Audio track ${enabled ? 'enabled' : 'disabled'}`);
       });
     }
   }
@@ -42,6 +46,7 @@ class WebRTCService {
     if (this.localStream) {
       this.localStream.getVideoTracks().forEach(track => {
         track.enabled = enabled;
+        console.log(`📹 Video track ${enabled ? 'enabled' : 'disabled'}`);
       });
     }
   }
@@ -52,6 +57,13 @@ class WebRTCService {
     stream: MediaStream,
     onSignal: (signal: any) => void
   ): Peer.Instance {
+    console.log(`🔄 Creating peer for ${userId}, initiator: ${initiator}`);
+    
+    if (!stream.active) {
+      console.error('❌ Stream is not active');
+      throw new Error('Stream is not active');
+    }
+
     const peer = new Peer({
       initiator,
       stream,
@@ -60,23 +72,32 @@ class WebRTCService {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
         ]
       }
     });
 
     peer.on('signal', (data) => {
+      console.log('📡 Peer signal generated:', data.type);
       onSignal(data);
     });
 
     peer.on('stream', (remoteStream) => {
+      console.log('🎥 Remote stream received from:', userId);
       this.onRemoteStreamCallbacks.forEach(cb => cb(userId, remoteStream));
     });
 
+    peer.on('connect', () => {
+      console.log('✅ Peer connection established with:', userId);
+    });
+
     peer.on('error', (err) => {
-      console.error('Peer error:', err);
+      console.error('❌ Peer error with', userId, ':', err);
     });
 
     peer.on('close', () => {
+      console.log('🔌 Peer connection closed with:', userId);
       this.removePeer(userId);
     });
 
@@ -84,10 +105,20 @@ class WebRTCService {
     return peer;
   }
 
-  signalPeer(userId: string, signal: any): void {
+  signalPeer(userId: string, signal: any): boolean {
     const peer = this.peers.get(userId);
     if (peer) {
-      peer.signal(signal);
+      console.log('🔄 Signaling peer', userId, 'with signal type:', signal.type);
+      try {
+        peer.signal(signal);
+        return true;
+      } catch (error) {
+        console.error('❌ Error signaling peer:', error);
+        return false;
+      }
+    } else {
+      console.warn('⚠️ No peer found for', userId);
+      return false;
     }
   }
 
@@ -100,13 +131,17 @@ class WebRTCService {
   }
 
   endAllCalls(): void {
-    this.peers.forEach((peer) => {
+    console.log('🔚 Ending all calls');
+    this.peers.forEach((peer, userId) => {
       peer.destroy();
     });
     this.peers.clear();
     
     if (this.localStream) {
-      this.localStream.getTracks().forEach(track => track.stop());
+      this.localStream.getTracks().forEach(track => {
+        track.stop();
+        console.log('🛑 Track stopped:', track.kind);
+      });
       this.localStream = null;
     }
     

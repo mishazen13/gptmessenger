@@ -1,3 +1,6 @@
+// main.tsx - ПЕРВАЯ СТРОКА!
+import './polyfills';
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles.css';
@@ -226,40 +229,114 @@ const App = (): JSX.Element => {
 
   React.useEffect(() => {
     if (!token || !me) return;
+    
+    console.log('🔌 Setting up socket connection');
     socketService.connect(token);
 
     const onIncoming = ({ from, fromName, fromAvatar, type, chatId }: { from: string; fromName: string; fromAvatar?: string; type: CallType; chatId?: string }): void => {
+      console.log('📞🔥🔥🔥 INCOMING CALL DETECTED! 🔥🔥🔥');
+      console.log('From ID:', from);
+      console.log('From Name:', fromName);
+      console.log('Type:', type);
+      console.log('Avatar:', fromAvatar);
+      console.log('ChatId:', chatId);
+      
       setIncomingCall({ from, fromName, fromAvatar, type, chatId });
+      
+      // Дополнительная проверка - показываем alert для отладки
+      alert(`Входящий звонок от ${fromName}!`);
     };
-    const onAccepted = (): void => setIsCallActive(true);
+    
+    const onAccepted = (): void => {
+      console.log('📞 Call accepted');
+      setIsCallActive(true);
+    };
+    
+    const onRejected = ({ from }: { from: string }): void => {
+      console.log('📞 Call rejected by:', from);
+      setNotice('Звонок отклонен');
+      setIsCallActive(false);
+      setParticipants([]);
+      setRemoteStreams(new Map());
+      callPeerIdRef.current = '';
+      webrtcService.endAllCalls();
+    };
+    
     const onEnded = (): void => {
+      console.log('📞 Call ended');
       webrtcService.endAllCalls();
       setIsCallActive(false);
       setParticipants([]);
       setRemoteStreams(new Map());
       callPeerIdRef.current = '';
     };
+    
     const onSignal = ({ from, signal }: { from: string; signal: unknown }): void => {
-      const local = webrtcService.getLocalStream();
-      if (!local) return;
-      if (!callPeerIdRef.current) {
-        callPeerIdRef.current = from;
-        webrtcService.createPeer(from, false, local, (payload) => socketService.emit('signal', { to: from, signal: payload }));
+      console.log('📡 Received signal from:', from, 'signal type:', (signal as any).type);
+      
+      // Если это answer на наш offer - просто передаем сигнал
+      if ((signal as any).type === 'answer') {
+        console.log('📞 Received answer from:', from);
+        webrtcService.signalPeer(from, signal);
+        return;
       }
-      webrtcService.signalPeer(from, signal);
+      
+      if ((signal as any).type === 'offer') {
+        console.log('📞 Received call offer from:', from);
+        if (isCallActive) {
+          console.log('⚠️ Already in a call, ignoring offer');
+          return;
+        }
+        // Для offer не создаем peer - это будет сделано в acceptIncomingCall
+        return;
+      }
+      
+      // Для остальных сигналов (candidate)
+      setTimeout(() => {
+        const signalSent = webrtcService.signalPeer(from, signal);
+        
+        if (!signalSent) {
+          console.warn('⚠️ No peer found for signal, creating new peer as receiver');
+          const local = webrtcService.getLocalStream();
+          if (!local) {
+            console.error('❌ No local stream available');
+            return;
+          }
+          
+          webrtcService.createPeer(
+            from,
+            false,
+            local,
+            (payload) => {
+              console.log('📡 Sending signal back to', from, 'type:', payload.type);
+              socketService.emit('signal', { to: from, signal: payload });
+            }
+          );
+          
+          setTimeout(() => {
+            console.log('🔄 Sending delayed signal to new peer', from);
+            webrtcService.signalPeer(from, signal);
+          }, 200);
+        }
+      }, 100);
     };
 
     socketService.on('call:incoming', onIncoming);
     socketService.on('call:accepted', onAccepted);
+    socketService.on('call:rejected', onRejected);
     socketService.on('call:ended', onEnded);
     socketService.on('signal', onSignal);
+    
     socketService.on('presence:update', (payload: Record<string, { status: PresenceStatus }>) => {
       const flat: Record<string, PresenceStatus> = {};
-      Object.entries(payload).forEach(([id, val]) => { flat[id] = val.status; });
+      Object.entries(payload).forEach(([id, val]) => { 
+        flat[id] = val.status; 
+      });
       setPresenceMap(flat);
     });
 
     webrtcService.onRemoteStream((userId, stream) => {
+      console.log('🎥 Remote stream received from:', userId);
       setRemoteStreams((prev) => {
         const next = new Map(prev);
         next.set(userId, stream);
@@ -267,12 +344,22 @@ const App = (): JSX.Element => {
       });
     });
 
-    socketService.emit('presence:set', { status: manualPresence, manual: true });
-
     return () => {
-      socketService.disconnect();
-      webrtcService.endAllCalls();
+      console.log('🔌 Cleaning up socket event listeners ONLY');
+      socketService.off('call:incoming', onIncoming);
+      socketService.off('call:accepted', onAccepted);
+      socketService.off('call:rejected', onRejected);
+      socketService.off('call:ended', onEnded);
+      socketService.off('signal', onSignal);
     };
+  }, [token, meId]);
+
+  // Отдельный эффект для отправки presence
+  React.useEffect(() => {
+    if (!token || !me || !socketService.isConnected()) return;
+    
+    console.log('📡 Sending presence update:', manualPresence);
+    socketService.emit('presence:set', { status: manualPresence, manual: true });
   }, [token, meId, manualPresence]);
 
   const logout = async (): Promise<void> => {
@@ -318,11 +405,9 @@ const App = (): JSX.Element => {
     }
   };
 
-  // В main.tsx, обновите функцию clearChat
   const clearChat = async (chatId: string): Promise<void> => {
     if (!token) return;
     
-    // Сначала очищаем локально для мгновенного отображения
     setChats((prevChats) => 
       prevChats.map((chat) => 
         chat.id === chatId 
@@ -334,10 +419,9 @@ const App = (): JSX.Element => {
     try {
       await api(`/api/chats/${chatId}/messages`, { method: 'DELETE' }, token);
       setNotice('Чат очищен.');
-      await refreshData(true); // Тихий рефреш для синхронизации
+      await refreshData(true);
     } catch (error) {
       setNotice((error as Error).message);
-      // Если ошибка, откатываем изменения
       await refreshData(true);
     }
   };
@@ -560,7 +644,6 @@ const App = (): JSX.Element => {
     }
   };
 
-  // Group management functions
   const updateGroupName = async (newName: string): Promise<void> => {
     if (!token || !groupProfileId) return;
     try {
@@ -576,13 +659,11 @@ const App = (): JSX.Element => {
     }
   };
 
-  // В main.tsx, обновите функцию leaveGroup
   const leaveGroup = async (): Promise<void> => {
     if (!token || !groupProfileId) return;
     
     const groupId = groupProfileId;
     
-    // Сначала удаляем локально для мгновенного отображения
     setChats((prevChats) => prevChats.filter((chat) => chat.id !== groupId));
     setAppPage('chat');
     setGroupProfileId('');
@@ -593,18 +674,15 @@ const App = (): JSX.Element => {
       await refreshData(true);
     } catch (error) {
       setNotice((error as Error).message);
-      // Если ошибка, восстанавливаем данные
       await refreshData();
     }
   };
 
-  // В main.tsx, обновите функцию deleteGroup
   const deleteGroup = async (): Promise<void> => {
     if (!token || !groupProfileId) return;
     
     const groupId = groupProfileId;
     
-    // Сначала удаляем локально для мгновенного отображения
     setChats((prevChats) => prevChats.filter((chat) => chat.id !== groupId));
     setAppPage('chat');
     setGroupProfileId('');
@@ -615,17 +693,13 @@ const App = (): JSX.Element => {
       await refreshData(true);
     } catch (error) {
       setNotice((error as Error).message);
-      // Если ошибка, восстанавливаем данные
       await refreshData();
     }
   };
 
-
-  // В main.tsx, обновите функцию removeMemberFromGroup
   const removeMemberFromGroup = async (userId: string): Promise<void> => {
     if (!token || !groupProfileId) return;
     
-    // Сначала удаляем локально для мгновенного отображения
     setChats((prevChats) => 
       prevChats.map((chat) => 
         chat.id === groupProfileId 
@@ -640,7 +714,6 @@ const App = (): JSX.Element => {
       await refreshData(true);
     } catch (error) {
       setNotice((error as Error).message);
-      // Если ошибка, восстанавливаем данные
       await refreshData();
     }
   };
@@ -650,6 +723,177 @@ const App = (): JSX.Element => {
     setAliasInput(aliases[userId] || '');
     setIsEditingAlias(false);
     setAppPage('friend-profile');
+  };
+
+  const addMembersToGroup = async (userIds: string[]): Promise<void> => {
+    if (!token || !groupProfileId) return;
+    
+    try {
+      for (const userId of userIds) {
+        await api(`/api/chats/${groupProfileId}/members`, {
+          method: 'POST',
+          body: JSON.stringify({ userId })
+        }, token);
+      }
+      
+      await refreshData();
+      setNotice(`Добавлено ${userIds.length} участников`);
+    } catch (error) {
+      setNotice((error as Error).message);
+    }
+  };
+
+  const startCall = async (type: CallType, peerId: string): Promise<void> => {
+    try {
+      console.log('📞 Starting call to:', peerId, 'type:', type);
+      
+      if (!me) {
+        throw new Error('User not authenticated');
+      }
+      
+      if (!peerId) {
+        throw new Error('Peer ID is missing');
+      }
+      
+      const stream = await webrtcService.initLocalStream(type === 'video');
+      console.log('🎥 Local stream obtained, tracks:', stream.getTracks().length);
+      
+      setCallType(type);
+      callPeerIdRef.current = peerId;
+      
+      const newParticipants: CallParticipant[] = [
+        { 
+          userId: me.user.id, 
+          name: getDisplayName(me.user), 
+          avatarUrl: getAvatarUrl(me.user.id), 
+          isMuted: false, 
+          isVideoEnabled: type === 'video', 
+          isSpeaking: false 
+        },
+        { 
+          userId: peerId, 
+          name: getDisplayName(me.users.find((u) => u.id === peerId) || { id: peerId, name: 'User', email: '' }), 
+          avatarUrl: getAvatarUrl(peerId), 
+          isMuted: false, 
+          isVideoEnabled: type === 'video', 
+          isSpeaking: false 
+        },
+      ];
+      
+      setParticipants(newParticipants);
+      setIsCallActive(true);
+      setCallExpanded(true);
+      
+      console.log('🔄 Creating peer as initiator');
+      webrtcService.createPeer(
+        peerId, 
+        true, 
+        stream, 
+        (signal) => {
+          console.log('📡 Sending signal to', peerId, 'signal type:', signal.type);
+          socketService.emit('signal', { to: peerId, signal });
+        }
+      );
+      
+      console.log('📢 Emitting call:start to', peerId);
+      socketService.emit('call:start', { to: peerId, type, chatId: activeChatId });
+      
+    } catch (error: any) {
+      console.error('❌ Failed to start call:', error);
+      setNotice(`Ошибка звонка: ${error.message}`);
+    }
+  };
+
+  const acceptIncomingCall = async (): Promise<void> => {
+    if (!incomingCall) return;
+    
+    try {
+      console.log('📞 Accepting call from:', incomingCall.from);
+      
+      if (!me) {
+        throw new Error('User not authenticated');
+      }
+      
+      // Сохраняем данные звонка
+      const callData = { ...incomingCall };
+      setIncomingCall(null); // Убираем модальное окно
+      
+      // Получаем локальный поток
+      const stream = await webrtcService.initLocalStream(callData.type === 'video');
+      console.log('🎥 Local stream obtained for answer');
+      
+      // Создаем peer как receiver
+      console.log('🔄 Creating peer as receiver for', callData.from);
+      webrtcService.createPeer(
+        callData.from, 
+        false, // initiator: false (мы отвечаем на звонок)
+        stream, 
+        (signal) => {
+          console.log('📡 Sending answer signal to', callData.from, 'type:', signal.type);
+          socketService.emit('signal', { to: callData.from, signal });
+        }
+      );
+      
+      // Устанавливаем состояние после создания peer
+      setCallType(callData.type);
+      callPeerIdRef.current = callData.from;
+      setIsCallActive(true);
+      setCallExpanded(true);
+      
+      setParticipants([
+        { 
+          userId: me.user.id, 
+          name: getDisplayName(me.user), 
+          avatarUrl: getAvatarUrl(me.user.id), 
+          isMuted: false, 
+          isVideoEnabled: callData.type === 'video', 
+          isSpeaking: false 
+        },
+        { 
+          userId: callData.from, 
+          name: callData.fromName, 
+          avatarUrl: callData.fromAvatar, 
+          isMuted: false, 
+          isVideoEnabled: callData.type === 'video', 
+          isSpeaking: false 
+        },
+      ]);
+      
+      // Отправляем подтверждение
+      console.log('📢 Sending call:accept to', callData.from);
+      socketService.emit('call:accept', { from: callData.from });
+      
+    } catch (error) {
+      console.error('❌ Failed to accept call:', error);
+      setNotice((error as Error).message);
+      setIsCallActive(false);
+    }
+  };
+  
+  const endCall = (): void => {
+    console.log('🔚 Ending call');
+    if (callPeerIdRef.current) {
+      socketService.emit('call:end', { to: callPeerIdRef.current });
+    }
+    webrtcService.endAllCalls();
+    setIsCallActive(false);
+    setParticipants([]);
+    setRemoteStreams(new Map());
+    callPeerIdRef.current = '';
+  };
+
+  const toggleMuteCall = (): void => {
+    if (!me) return;
+    setParticipants((prev) => prev.map((p) => p.userId === me.user.id ? { ...p, isMuted: !p.isMuted } : p));
+    const meP = participants.find((p) => p.userId === me.user.id);
+    webrtcService.toggleAudio(Boolean(meP?.isMuted));
+  };
+
+  const toggleVideoCall = (): void => {
+    if (!me) return;
+    setParticipants((prev) => prev.map((p) => p.userId === me.user.id ? { ...p, isVideoEnabled: !p.isVideoEnabled } : p));
+    const meP = participants.find((p) => p.userId === me.user.id);
+    webrtcService.toggleVideo(!meP?.isVideoEnabled);
   };
 
   if (!me) {
@@ -715,86 +959,6 @@ const App = (): JSX.Element => {
   const friendDirectChat = chats.find((c) => !c.isGroup && friendProfileId && c.memberIds.includes(me.user.id) && c.memberIds.includes(friendProfileId));
   const wallpaper = prefs[me.user.id]?.wallpaperUrl;
   const theme = { ...DEFAULT_THEME, ...(prefs[me.user.id]?.theme ?? {}) };
-  // В main.tsx, добавьте функцию addMemberToGroup
-  // Найдите существующую функцию addMemberToGroup (возможно, она уже есть)
-  // и замените её на эту:
-
-  const addMembersToGroup = async (userIds: string[]): Promise<void> => {
-    if (!token || !groupProfileId) return;
-    
-    try {
-      // Добавляем каждого выбранного пользователя
-      for (const userId of userIds) {
-        await api(`/api/chats/${groupProfileId}/members`, {
-          method: 'POST',
-          body: JSON.stringify({ userId })
-        }, token);
-      }
-      
-      await refreshData();
-      setNotice(`Добавлено ${userIds.length} участников`);
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  };
-
-  const startCall = async (type: CallType, peerId: string): Promise<void> => {
-    try {
-      const stream = await webrtcService.initLocalStream(type === 'video');
-      setCallType(type);
-      callPeerIdRef.current = peerId;
-      setParticipants([
-        { userId: me.user.id, name: getDisplayName(me.user), avatarUrl: getAvatarUrl(me.user.id), isMuted: false, isVideoEnabled: type === 'video', isSpeaking: false },
-        { userId: peerId, name: getDisplayName(me.users.find((u) => u.id === peerId) || { id: peerId, name: 'User', email: '' }), avatarUrl: getAvatarUrl(peerId), isMuted: false, isVideoEnabled: type === 'video', isSpeaking: false },
-      ]);
-      setIsCallActive(true);
-      setCallExpanded(true);
-      webrtcService.createPeer(peerId, true, stream, (signal) => socketService.emit('signal', { to: peerId, signal }));
-      socketService.emit('call:start', { to: peerId, type, chatId: activeChatId });
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  };
-
-  const acceptIncomingCall = async (): Promise<void> => {
-    if (!incomingCall) return;
-    try {
-      const stream = await webrtcService.initLocalStream(incomingCall.type === 'video');
-      setCallType(incomingCall.type);
-      callPeerIdRef.current = incomingCall.from;
-      setIsCallActive(true);
-      setCallExpanded(true);
-      setParticipants([
-        { userId: me.user.id, name: getDisplayName(me.user), avatarUrl: getAvatarUrl(me.user.id), isMuted: false, isVideoEnabled: incomingCall.type === 'video', isSpeaking: false },
-        { userId: incomingCall.from, name: incomingCall.fromName, avatarUrl: incomingCall.fromAvatar, isMuted: false, isVideoEnabled: incomingCall.type === 'video', isSpeaking: false },
-      ]);
-      webrtcService.createPeer(incomingCall.from, false, stream, (signal) => socketService.emit('signal', { to: incomingCall.from, signal }));
-      socketService.emit('call:accept', { from: incomingCall.from });
-      setIncomingCall(null);
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  };
-
-  const endCall = (): void => {
-    if (callPeerIdRef.current) socketService.emit('call:end', { to: callPeerIdRef.current });
-    webrtcService.endAllCalls();
-    setIsCallActive(false);
-    setParticipants([]);
-    setRemoteStreams(new Map());
-  };
-
-  const toggleMuteCall = (): void => {
-    setParticipants((prev) => prev.map((p) => p.userId === me.user.id ? { ...p, isMuted: !p.isMuted } : p));
-    const meP = participants.find((p) => p.userId === me.user.id);
-    webrtcService.toggleAudio(Boolean(meP?.isMuted));
-  };
-
-  const toggleVideoCall = (): void => {
-    setParticipants((prev) => prev.map((p) => p.userId === me.user.id ? { ...p, isVideoEnabled: !p.isVideoEnabled } : p));
-    const meP = participants.find((p) => p.userId === me.user.id);
-    webrtcService.toggleVideo(!meP?.isVideoEnabled);
-  };
 
   return (
     <main
@@ -840,141 +1004,141 @@ const App = (): JSX.Element => {
 
         <section className="h-[calc(100vh-2rem)]">
           <div key={appPage} className="h-full animate-pageIn">
-          {appPage === 'chat' && (
-            <ChatPage
-              me={me.user}
-              users={me.users}
-              activeChat={activeChat}
-              getDisplayName={getDisplayName}
-              getAvatarUrl={getAvatarUrl}
-              onOpenFriendProfile={(id: string) => { 
-                setFriendProfileId(id); 
-                setAliasInput(aliases[id] || ''); 
-                setIsEditingAlias(false); 
-                setAppPage('friend-profile'); 
-              }}
-              onOpenGroupProfile={(id: string) => {
-                setGroupProfileId(id);
-                setNewGroupName(chats.find((c) => c.id === id)?.name || '');
-                setIsEditingGroupName(false);
-                setAppPage('group-profile');
-              }}
-              onContextMenu={onMessageContextMenu}
-              replyToMessageId={replyToMessageId}
-              onClearReply={() => setReplyToMessageId('')}
-              messageText={messageText}
-              onMessageText={setMessageText}
-              onSend={sendMessage}
-              onPickFiles={(files) => void handlePickFiles(files)}
-              attachedFiles={attachedFiles}
-              onRemoveAttachedFile={(id: string) => setAttachedFiles((prev) => { 
-                const removing = prev.find((item) => item.id === id); 
-                if (removing?.localFile && removing.url.startsWith('blob:')) URL.revokeObjectURL(removing.url); 
-                return prev.filter((item) => item.id !== id); 
-              })}
-              theme={theme}
-              peerPresence={activeChat && !activeChat.isGroup ? (presenceMap[activeChat.memberIds.find((id) => id !== me.user.id) || ''] ?? 'offline') : 'offline'}
-              onStartCall={(type, peerId) => void startCall(type, peerId)}
-              isCallActive={isCallActive}
-              callType={callType}
-              participants={participants}
-              onEndCall={endCall}
-              onToggleMute={toggleMuteCall}
-              onToggleVideo={toggleVideoCall}
-              callExpanded={callExpanded}
-              onToggleCallExpand={() => setCallExpanded((v) => !v)}
-              localStream={webrtcService.getLocalStream()}
-              remoteStreams={remoteStreams}
-            />
-          )}
+            {appPage === 'chat' && (
+              <ChatPage
+                me={me.user}
+                users={me.users}
+                activeChat={activeChat}
+                getDisplayName={getDisplayName}
+                getAvatarUrl={getAvatarUrl}
+                onOpenFriendProfile={(id: string) => { 
+                  setFriendProfileId(id); 
+                  setAliasInput(aliases[id] || ''); 
+                  setIsEditingAlias(false); 
+                  setAppPage('friend-profile'); 
+                }}
+                onOpenGroupProfile={(id: string) => {
+                  setGroupProfileId(id);
+                  setNewGroupName(chats.find((c) => c.id === id)?.name || '');
+                  setIsEditingGroupName(false);
+                  setAppPage('group-profile');
+                }}
+                onContextMenu={onMessageContextMenu}
+                replyToMessageId={replyToMessageId}
+                onClearReply={() => setReplyToMessageId('')}
+                messageText={messageText}
+                onMessageText={setMessageText}
+                onSend={sendMessage}
+                onPickFiles={(files) => void handlePickFiles(files)}
+                attachedFiles={attachedFiles}
+                onRemoveAttachedFile={(id: string) => setAttachedFiles((prev) => { 
+                  const removing = prev.find((item) => item.id === id); 
+                  if (removing?.localFile && removing.url.startsWith('blob:')) URL.revokeObjectURL(removing.url); 
+                  return prev.filter((item) => item.id !== id); 
+                })}
+                theme={theme}
+                peerPresence={activeChat && !activeChat.isGroup ? (presenceMap[activeChat.memberIds.find((id) => id !== me.user.id) || ''] ?? 'offline') : 'offline'}
+                onStartCall={(type, peerId) => void startCall(type, peerId)}
+                isCallActive={isCallActive}
+                callType={callType}
+                participants={participants}
+                onEndCall={endCall}
+                onToggleMute={toggleMuteCall}
+                onToggleVideo={toggleVideoCall}
+                callExpanded={callExpanded}
+                onToggleCallExpand={() => setCallExpanded((v) => !v)}
+                localStream={webrtcService.getLocalStream()}
+                remoteStreams={remoteStreams}
+              />
+            )}
 
-          {appPage === 'plus' && (
-            <PlusPage 
-              onOpenAddFriend={() => setAppPage('add-friend')} 
-              onOpenCreateGroup={() => setAppPage('create-group')} 
-            />
-          )}
+            {appPage === 'plus' && (
+              <PlusPage 
+                onOpenAddFriend={() => setAppPage('add-friend')} 
+                onOpenCreateGroup={() => setAppPage('create-group')} 
+              />
+            )}
 
-          {appPage === 'add-friend' && (
-            <AddFriendPage
-              friendEmail={friendEmail}
-              onFriendEmail={setFriendEmail}
-              onAddFriend={addFriend}
-              requests={friendRequests}
-              onAccept={(id: string) => void acceptFriendRequest(id)}
-            />
-          )}
+            {appPage === 'add-friend' && (
+              <AddFriendPage
+                friendEmail={friendEmail}
+                onFriendEmail={setFriendEmail}
+                onAddFriend={addFriend}
+                requests={friendRequests}
+                onAccept={(id: string) => void acceptFriendRequest(id)}
+              />
+            )}
 
-          {appPage === 'create-group' && (
-            <CreateGroupPage
-              groupName={groupName}
-              onGroupName={setGroupName}
-              friends={friends}
-              selected={groupSelectedFriends}
-              onToggle={(id: string) => setGroupSelectedFriends((prev) => 
-                prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]
-              )}
-              onCreateGroup={createGroup}
-            />
-          )}
+            {appPage === 'create-group' && (
+              <CreateGroupPage
+                groupName={groupName}
+                onGroupName={setGroupName}
+                friends={friends}
+                selected={groupSelectedFriends}
+                onToggle={(id: string) => setGroupSelectedFriends((prev) => 
+                  prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]
+                )}
+                onCreateGroup={createGroup}
+              />
+            )}
 
-          {appPage === 'settings' && (
-            <SettingsPage
-              me={me.user}
-              section={settingsSection}
-              onBack={() => setAppPage('chat')}
-              onLogout={() => void logout()}
-              uiVersion={UI_VERSION}
-              onAvatarFile={(file) => void saveAppearanceFile('avatarUrl', file)}
-              onWallpaperFile={(file) => void saveAppearanceFile('wallpaperUrl', file)}
-              onBannerFile={(file) => void saveAppearanceFile('bannerUrl', file)}
-              theme={theme}
-              onTheme={updateTheme}
-              onResetTheme={resetTheme}
-            />
-          )}
+            {appPage === 'settings' && (
+              <SettingsPage
+                me={me.user}
+                section={settingsSection}
+                onBack={() => setAppPage('chat')}
+                onLogout={() => void logout()}
+                uiVersion={UI_VERSION}
+                onAvatarFile={(file) => void saveAppearanceFile('avatarUrl', file)}
+                onWallpaperFile={(file) => void saveAppearanceFile('wallpaperUrl', file)}
+                onBannerFile={(file) => void saveAppearanceFile('bannerUrl', file)}
+                theme={theme}
+                onTheme={updateTheme}
+                onResetTheme={resetTheme}
+              />
+            )}
 
-          {appPage === 'friend-profile' && (
-            <FriendProfilePage
-              friend={friend}
-              alias={aliasInput}
-              isEditingAlias={isEditingAlias}
-              onAlias={setAliasInput}
-              onToggleEdit={() => setIsEditingAlias((prev) => !prev)}
-              onSaveAlias={() => {
-                if (!friend) return;
-                saveAlias(friend.id, aliasInput);
-                setIsEditingAlias(false);
-              }}
-              onDeleteFriend={() => friend && void removeFriend(friend.id)}
-              onClearChat={() => friendDirectChat && void clearChat(friendDirectChat.id)}
-              chat={friendDirectChat}
-              avatarUrl={friend ? getAvatarUrl(friend.id) : undefined}
-              bannerUrl={friend ? getBannerUrl(friend.id) : undefined}
-            />
-          )}
+            {appPage === 'friend-profile' && (
+              <FriendProfilePage
+                friend={friend}
+                alias={aliasInput}
+                isEditingAlias={isEditingAlias}
+                onAlias={setAliasInput}
+                onToggleEdit={() => setIsEditingAlias((prev) => !prev)}
+                onSaveAlias={() => {
+                  if (!friend) return;
+                  saveAlias(friend.id, aliasInput);
+                  setIsEditingAlias(false);
+                }}
+                onDeleteFriend={() => friend && void removeFriend(friend.id)}
+                onClearChat={() => friendDirectChat && void clearChat(friendDirectChat.id)}
+                chat={friendDirectChat}
+                avatarUrl={friend ? getAvatarUrl(friend.id) : undefined}
+                bannerUrl={friend ? getBannerUrl(friend.id) : undefined}
+              />
+            )}
 
-        {appPage === 'group-profile' && (
-          <GroupProfilePage
-            group={activeGroup}
-            me={me.user}
-            members={groupMembers}
-            friends={friends}
-            isEditingName={isEditingGroupName}
-            onNameChange={setNewGroupName}
-            onToggleEdit={() => setIsEditingGroupName(!isEditingGroupName)}
-            onSaveName={() => void updateGroupName(newGroupName)}
-            onLeaveGroup={() => void leaveGroup()}
-            onDeleteGroup={() => void deleteGroup()}
-            onClearChat={() => activeGroup && clearChat(activeGroup.id)}
-            onAddMember={(userIds: string[]) => void addMembersToGroup(userIds)} // Используем новое имя или правильную функцию
-            onRemoveMember={(id: string) => void removeMemberFromGroup(id)}
-            onViewMemberProfile={(id: string) => viewMemberProfile(id)}
-            isAdmin={activeGroup?.creatorId === me.user.id}
-            creatorId={activeGroup?.creatorId}
-            getAvatarUrl={getAvatarUrl}
-          />
-        )}
+            {appPage === 'group-profile' && (
+              <GroupProfilePage
+                group={activeGroup}
+                me={me.user}
+                members={groupMembers}
+                friends={friends}
+                isEditingName={isEditingGroupName}
+                onNameChange={setNewGroupName}
+                onToggleEdit={() => setIsEditingGroupName(!isEditingGroupName)}
+                onSaveName={() => void updateGroupName(newGroupName)}
+                onLeaveGroup={() => void leaveGroup()}
+                onDeleteGroup={() => void deleteGroup()}
+                onClearChat={() => activeGroup && clearChat(activeGroup.id)}
+                onAddMember={(userIds: string[]) => void addMembersToGroup(userIds)}
+                onRemoveMember={(id: string) => void removeMemberFromGroup(id)}
+                onViewMemberProfile={(id: string) => viewMemberProfile(id)}
+                isAdmin={activeGroup?.creatorId === me.user.id}
+                creatorId={activeGroup?.creatorId}
+                getAvatarUrl={getAvatarUrl}
+              />
+            )}
           </div>
         </section>
       </div>
@@ -985,7 +1149,21 @@ const App = (): JSX.Element => {
         callerAvatar={incomingCall?.fromAvatar}
         callType={incomingCall?.type ?? 'audio'}
         onAccept={() => void acceptIncomingCall()}
+        onReject={() => {
+          if (incomingCall) {
+            socketService.emit('call:reject', { from: incomingCall.from });
+            setIncomingCall(null);
+            setNotice('Звонок отклонен');
+          }
+        }}
       />
+
+      {/* Временная отладка - показать если есть входящий звонок */}
+      {incomingCall && (
+        <div style={{ position: 'fixed', top: 10, left: 10, background: 'red', color: 'white', zIndex: 9999, padding: '10px' }}>
+          🔔 Входящий звонок от: {incomingCall.fromName}
+        </div>
+      )}
 
       {contextMenu && (
         <div 

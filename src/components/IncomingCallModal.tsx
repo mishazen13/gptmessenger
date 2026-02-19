@@ -1,5 +1,7 @@
+// components/IncomingCallModal.tsx
+import React from 'react';
 import { Avatar } from './Avatar';
-import { MdCall } from 'react-icons/md';
+import { MdCall, MdCallEnd } from 'react-icons/md';
 
 type Props = {
   isOpen: boolean;
@@ -7,6 +9,7 @@ type Props = {
   callerAvatar?: string;
   callType: 'audio' | 'video';
   onAccept: () => void;
+  onReject: () => void;
 };
 
 export const IncomingCallModal = ({
@@ -15,6 +18,7 @@ export const IncomingCallModal = ({
   callerAvatar,
   callType,
   onAccept,
+  onReject,
 }: Props): JSX.Element | null => {
   if (!isOpen) return null;
 
@@ -32,14 +36,24 @@ export const IncomingCallModal = ({
           <h3 className="mb-1 text-lg font-semibold">{callerName}</h3>
           <p className="mb-6 text-sm text-white/60">{callType === 'video' ? '📹 Видеозвонок' : '🎧 Аудиозвонок'}</p>
 
-          <button
-            onClick={onAccept}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-500 py-3 text-white transition hover:bg-green-600"
-            type="button"
-          >
-            <MdCall size={20} />
-            Принять
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={onAccept}
+              className="flex-1 rounded-xl bg-green-500 py-3 text-white transition hover:bg-green-600 flex items-center justify-center gap-2"
+              type="button"
+            >
+              <MdCall size={20} />
+              Принять
+            </button>
+            <button
+              onClick={onReject}
+              className="flex-1 rounded-xl bg-red-500 py-3 text-white transition hover:bg-red-600 flex items-center justify-center gap-2"
+              type="button"
+            >
+              <MdCallEnd size={20} />
+              Отклонить
+            </button>
+          </div>
         </div>
       </div>
     </div>
