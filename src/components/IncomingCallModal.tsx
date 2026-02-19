@@ -1,4 +1,4 @@
-import { MdCall, MdCallEnd } from 'react-icons/md';
+import { MdCall, MdCallEnd, MdVideocam } from 'react-icons/md';
 import { Avatar } from './Avatar';
 
 type Props = {
@@ -32,7 +32,19 @@ export const IncomingCallModal = ({
           </div>
 
           <h3 className="mb-1 text-lg font-semibold">{callerName}</h3>
-          <p className="mb-6 text-sm text-white/60">{callType === 'video' ? '📹 Видеозвонок' : '🎧 Аудиозвонок'}</p>
+          <p className="mb-6 text-sm text-white/60 flex items-center justify-center gap-2">
+            {callType === 'video' ? (
+              <>
+                <MdVideocam size={20} className="text-cyan-400" />
+                <span>Видеозвонок</span>
+              </>
+            ) : (
+              <>
+                <MdCall size={20} className="text-green-400" />
+                <span>Аудиозвонок</span>
+              </>
+            )}
+          </p>
 
           <div className="flex gap-2">
             <button
