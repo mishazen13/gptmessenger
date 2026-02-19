@@ -250,12 +250,20 @@ export const CallOverlay = ({
       <div className="p-4 flex justify-center">
         <div className={`grid ${gridCols} gap-4 w-full max-w-6xl`}>
           {/* Локальный участник */}
-          <ParticipantTile 
-            participant={localParticipant!} 
-            isLocal 
-            stream={localStream ?? undefined} 
-            isVideoCall={callType === 'video'} 
-          />
+          {localParticipant ? (
+            <ParticipantTile
+              participant={localParticipant}
+              isLocal
+              stream={localStream ?? undefined}
+              isVideoCall={callType === 'video'}
+            />
+          ) : (
+            <div className="relative aspect-video overflow-hidden rounded-xl border-2 border-dashed border-white/20 bg-slate-900/50">
+              <div className="grid h-full w-full place-items-center bg-gradient-to-br from-slate-800/80 to-slate-900/80 px-4 text-center text-sm text-white/70">
+                Подключаем участника звонка…
+              </div>
+            </div>
+          )}
           
           {/* Удаленные участники */}
           {remoteParticipants.map((p) => (
