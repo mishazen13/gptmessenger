@@ -2,7 +2,20 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles.css';
 import { api } from './lib/api';
-import { AppPage, AuthPage, Chat, MeResponse, Message, MessageAttachment, MessageContextMenu, PublicUser, SettingsSection, ThemeSettings } from './types';
+import { 
+  AppPage, 
+  AuthPage, 
+  Chat, 
+  MeResponse, 
+  Message, 
+  MessageAttachment, 
+  MessageContextMenu, 
+  PublicUser, 
+  SettingsSection, 
+  ThemeSettings,
+  GroupAvatar 
+} from './types';
+import { WelcomePage } from './pages/WelcomePage';
 import { AuthLoginPage } from './pages/AuthLoginPage';
 import { AuthRegisterPage } from './pages/AuthRegisterPage';
 import { Sidebar } from './components/Sidebar';
@@ -12,6 +25,9 @@ import { PlusPage } from './pages/PlusPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { FriendProfilePage } from './pages/FriendProfilePage';
 import { CreateGroupPage } from './pages/CreateGroupPage';
+import { GroupProfilePage } from './pages/GroupProfilePage';
+import socketService from './services/socket';
+import webrtcService from './services/webrtc';
 
 const TOKEN_KEY = 'liquid-messenger-token';
 const UI_VERSION = 'UI v5.0';
@@ -28,9 +44,30 @@ const DEFAULT_THEME: ThemeSettings = {
   saturation: 100,
 };
 
-type UserPrefs = { avatarUrl?: string; bannerUrl?: string; wallpaperUrl?: string; theme?: ThemeSettings };
+type UserPrefs = { 
+  avatarUrl?: string; 
+  bannerUrl?: string; 
+  wallpaperUrl?: string; 
+  theme?: ThemeSettings 
+};
 
 type PrefMap = Record<string, UserPrefs>;
+
+// Predefined group avatars
+const GROUP_AVATARS: GroupAvatar[] = [
+  { id: '1', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group1', name: 'Аватар 1' },
+  { id: '2', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group2', name: 'Аватар 2' },
+  { id: '3', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group3', name: 'Аватар 3' },
+  { id: '4', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group4', name: 'Аватар 4' },
+  { id: '5', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group5', name: 'Аватар 5' },
+  { id: '6', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group6', name: 'Аватар 6' },
+  { id: '7', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group7', name: 'Аватар 7' },
+  { id: '8', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group8', name: 'Аватар 8' },
+  { id: '9', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group9', name: 'Аватар 9' },
+  { id: '10', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group10', name: 'Аватар 10' },
+  { id: '11', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group11', name: 'Аватар 11' },
+  { id: '12', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group12', name: 'Аватар 12' },
+];
 
 const readPrefs = (): PrefMap => {
   try {
@@ -46,6 +83,8 @@ const savePrefs = (prefs: PrefMap): void => {
 };
 
 const App = (): JSX.Element => {
+  const [groupAvatar, setGroupAvatar] = React.useState('');
+  const [isFirstVisit, setIsFirstVisit] = React.useState(() => localStorage.getItem('liquid-visited') !== 'true');
   const [token, setToken] = React.useState<string | null>(() => sessionStorage.getItem(TOKEN_KEY));
   const [me, setMe] = React.useState<MeResponse | null>(null);
   const [chats, setChats] = React.useState<Chat[]>([]);
@@ -57,6 +96,9 @@ const App = (): JSX.Element => {
   const [contextMenu, setContextMenu] = React.useState<MessageContextMenu | null>(null);
   const [settingsSection, setSettingsSection] = React.useState<SettingsSection>('profile');
   const [friendProfileId, setFriendProfileId] = React.useState('');
+  const [groupProfileId, setGroupProfileId] = React.useState('');
+  const [isEditingGroupName, setIsEditingGroupName] = React.useState(false);
+  const [newGroupName, setNewGroupName] = React.useState('');
 
   const [authName, setAuthName] = React.useState('');
   const [authEmail, setAuthEmail] = React.useState('');
@@ -101,7 +143,6 @@ const App = (): JSX.Element => {
       reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
       reader.readAsDataURL(file);
     });
-
 
   const refreshData = React.useCallback(async (silent = false) => {
     if (!token) return;
@@ -160,12 +201,18 @@ const App = (): JSX.Element => {
   }, []);
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
+  const activeGroup = chats.find((chat) => chat.id === groupProfileId);
+  const groupMembers = activeGroup?.memberIds
+    .map((id) => me?.users.find((u) => u.id === id))
+    .filter(Boolean) as PublicUser[] || [];
 
   const submitAuth = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     try {
       const endpoint = authPage === 'register' ? '/api/auth/register' : '/api/auth/login';
-      const payload = authPage === 'register' ? { name: authName, email: authEmail, password: authPassword } : { email: authEmail, password: authPassword };
+      const payload = authPage === 'register' 
+        ? { name: authName, email: authEmail, password: authPassword } 
+        : { email: authEmail, password: authPassword };
       const response = await api<{ token: string }>(endpoint, { method: 'POST', body: JSON.stringify(payload) });
       sessionStorage.setItem(TOKEN_KEY, response.token);
       setToken(response.token);
@@ -177,6 +224,34 @@ const App = (): JSX.Element => {
       setNotice((error as Error).message);
     }
   };
+
+  const [incomingCall, setIncomingCall] = React.useState<{
+  from: string;
+  fromName: string;
+  fromAvatar?: string;
+  type: 'audio' | 'video';
+} | null>(null);
+
+
+  React.useEffect(() => {
+  if (token && me) {
+    socketService.connect(token);
+    
+    socketService.on('call:incoming', ({ from, fromName, fromAvatar, type }) => {
+      // Показываем модалку входящего звонка
+      setIncomingCall({
+        from,
+        fromName,
+        fromAvatar,
+        type
+      });
+    });
+    
+    return () => {
+      socketService.disconnect();
+    };
+  }
+}, [token, me]);
 
   const logout = async (): Promise<void> => {
     if (token) await api('/api/auth/logout', { method: 'POST' }, token).catch(() => null);
@@ -221,29 +296,27 @@ const App = (): JSX.Element => {
     }
   };
 
-  const createGroup = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-    if (!token) return;
-    try {
-      const created = await api<{ chat: Chat }>('/api/chats/group', { method: 'POST', body: JSON.stringify({ name: groupName, memberIds: groupSelectedFriends }) }, token);
-      setGroupName('');
-      setGroupSelectedFriends([]);
-      setAppPage('chat');
-      setActiveChatId(created.chat.id);
-      await refreshData();
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  };
-
+  // В main.tsx, обновите функцию clearChat
   const clearChat = async (chatId: string): Promise<void> => {
     if (!token) return;
+    
+    // Сначала очищаем локально для мгновенного отображения
+    setChats((prevChats) => 
+      prevChats.map((chat) => 
+        chat.id === chatId 
+          ? { ...chat, messages: [] } 
+          : chat
+      )
+    );
+    
     try {
       await api(`/api/chats/${chatId}/messages`, { method: 'DELETE' }, token);
       setNotice('Чат очищен.');
-      await refreshData();
+      await refreshData(true); // Тихий рефреш для синхронизации
     } catch (error) {
       setNotice((error as Error).message);
+      // Если ошибка, откатываем изменения
+      await refreshData(true);
     }
   };
 
@@ -256,7 +329,7 @@ const App = (): JSX.Element => {
 
       if (localFiles.length) {
         const env = (import.meta as ImportMeta & { env?: Record<string, string | boolean> }).env;
-        const uploadBase = env?.DEV ? String(env.VITE_API_URL ?? 'http://localhost:4000') : '';
+        const uploadBase = env?.DEV ? String(env.VITE_API_URL ?? 'http://192.168.0.106:4000') : '';
         const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
         uploaded = await Promise.all(localFiles.map(async (file) => {
@@ -294,7 +367,13 @@ const App = (): JSX.Element => {
       }
 
       const readyAttachments = [
-        ...attachedFiles.filter((file) => !file.localFile).map((file) => ({ id: file.id, name: file.name, type: file.type, size: file.size, url: file.url })),
+        ...attachedFiles.filter((file) => !file.localFile).map((file) => ({ 
+          id: file.id, 
+          name: file.name, 
+          type: file.type, 
+          size: file.size, 
+          url: file.url 
+        })),
         ...uploaded,
       ];
 
@@ -306,9 +385,11 @@ const App = (): JSX.Element => {
           attachments: readyAttachments,
         }),
       }, token);
+      
       attachedFiles.forEach((file) => {
         if (file.localFile && file.url.startsWith('blob:')) URL.revokeObjectURL(file.url);
       });
+      
       setMessageText('');
       setAttachedFiles([]);
       setReplyToMessageId('');
@@ -331,7 +412,14 @@ const App = (): JSX.Element => {
 
   const onMessageContextMenu = (event: React.MouseEvent<HTMLElement>, chatId: string, message: Message, mine: boolean): void => {
     event.preventDefault();
-    setContextMenu({ x: event.clientX, y: event.clientY, chatId, messageId: message.id, mine, deletedForEveryone: Boolean(message.deletedForEveryone) });
+    setContextMenu({ 
+      x: event.clientX, 
+      y: event.clientY, 
+      chatId, 
+      messageId: message.id, 
+      mine, 
+      deletedForEveryone: Boolean(message.deletedForEveryone) 
+    });
   };
 
   const handleMenuReply = (): void => {
@@ -426,21 +514,176 @@ const App = (): JSX.Element => {
     }
   };
 
+  const createGroup = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    if (!token) return;
+    try {
+      const created = await api<{ chat: Chat }>('/api/chats/group', { 
+        method: 'POST', 
+        body: JSON.stringify({ 
+          name: groupName, 
+          memberIds: groupSelectedFriends,
+          avatarUrl: groupAvatar || undefined
+        }) 
+      }, token);
+      
+      setGroupName('');
+      setGroupSelectedFriends([]);
+      setGroupAvatar('');
+      setAppPage('chat');
+      setActiveChatId(created.chat.id);
+      await refreshData();
+    } catch (error) {
+      setNotice((error as Error).message);
+    }
+  };
+
+  // Group management functions
+  const updateGroupName = async (newName: string): Promise<void> => {
+    if (!token || !groupProfileId) return;
+    try {
+      await api(`/api/chats/${groupProfileId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: newName })
+      }, token);
+      setIsEditingGroupName(false);
+      await refreshData();
+      setNotice('Название группы обновлено');
+    } catch (error) {
+      setNotice((error as Error).message);
+    }
+  };
+
+  // В main.tsx, обновите функцию leaveGroup
+  const leaveGroup = async (): Promise<void> => {
+    if (!token || !groupProfileId) return;
+    
+    const groupId = groupProfileId;
+    
+    // Сначала удаляем локально для мгновенного отображения
+    setChats((prevChats) => prevChats.filter((chat) => chat.id !== groupId));
+    setAppPage('chat');
+    setGroupProfileId('');
+    
+    try {
+      await api(`/api/chats/${groupId}/leave`, { method: 'POST' }, token);
+      setNotice('Вы покинули группу');
+      await refreshData(true);
+    } catch (error) {
+      setNotice((error as Error).message);
+      // Если ошибка, восстанавливаем данные
+      await refreshData();
+    }
+  };
+
+  // В main.tsx, обновите функцию deleteGroup
+  const deleteGroup = async (): Promise<void> => {
+    if (!token || !groupProfileId) return;
+    
+    const groupId = groupProfileId;
+    
+    // Сначала удаляем локально для мгновенного отображения
+    setChats((prevChats) => prevChats.filter((chat) => chat.id !== groupId));
+    setAppPage('chat');
+    setGroupProfileId('');
+    
+    try {
+      await api(`/api/chats/${groupId}`, { method: 'DELETE' }, token);
+      setNotice('Группа удалена');
+      await refreshData(true);
+    } catch (error) {
+      setNotice((error as Error).message);
+      // Если ошибка, восстанавливаем данные
+      await refreshData();
+    }
+  };
+
+  const addMemberToGroup = async (): Promise<void> => {
+    setNotice('Функция добавления участников в разработке');
+  };
+
+  // В main.tsx, обновите функцию removeMemberFromGroup
+  const removeMemberFromGroup = async (userId: string): Promise<void> => {
+    if (!token || !groupProfileId) return;
+    
+    // Сначала удаляем локально для мгновенного отображения
+    setChats((prevChats) => 
+      prevChats.map((chat) => 
+        chat.id === groupProfileId 
+          ? { ...chat, memberIds: chat.memberIds.filter(id => id !== userId) } 
+          : chat
+      )
+    );
+    
+    try {
+      await api(`/api/chats/${groupProfileId}/members/${userId}`, { method: 'DELETE' }, token);
+      setNotice('Участник удален из группы');
+      await refreshData(true);
+    } catch (error) {
+      setNotice((error as Error).message);
+      // Если ошибка, восстанавливаем данные
+      await refreshData();
+    }
+  };
+
+  const viewMemberProfile = (userId: string): void => {
+    setFriendProfileId(userId);
+    setAliasInput(aliases[userId] || '');
+    setIsEditingAlias(false);
+    setAppPage('friend-profile');
+  };
+
   if (!me) {
+    if (isFirstVisit) {
+      return (
+        <WelcomePage
+          onRegister={() => {
+            setAuthPage('register');
+            setIsFirstVisit(false);
+            localStorage.setItem('liquid-visited', 'true');
+          }}
+          onLogin={() => {
+            setAuthPage('login');
+            setIsFirstVisit(false);
+            localStorage.setItem('liquid-visited', 'true');
+          }}
+        />
+      );
+    }
+
     return (
-      <main className="min-h-screen bg-gradient-to-br from-indigo-950 via-slate-950 to-cyan-950 p-4 text-white">
-        <div className="mx-auto mt-12 max-w-md rounded-3xl border border-white/20 bg-white/10 p-6 shadow-glass backdrop-blur-xl">
-          <div className="mb-2 flex items-center justify-between gap-2"><h1 className="text-3xl font-bold">Liquid Messenger</h1><span className="rounded-full bg-cyan-300/20 px-3 py-1 text-xs text-cyan-100">{UI_VERSION}</span></div>
-          <div className="mb-4 flex gap-2">
-            <button className={`flex-1 rounded-xl px-3 py-2 ${authPage === 'login' ? 'bg-cyan-400 text-black' : 'bg-white/10'}`} onClick={() => setAuthPage('login')} type="button">Логин</button>
-            <button className={`flex-1 rounded-xl px-3 py-2 ${authPage === 'register' ? 'bg-cyan-400 text-black' : 'bg-white/10'}`} onClick={() => setAuthPage('register')} type="button">Регистрация</button>
+      <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-950 via-slate-950 to-cyan-950 p-4 text-white">
+        <div className="max-w-md w-full rounded-3xl border border-white/20 bg-white/10 p-6 shadow-glass backdrop-blur-xl">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h1 className="text-3xl font-bold">Авторизация</h1>
+            <span className="rounded-full bg-cyan-300/20 px-3 py-1 text-xs text-cyan-100">
+              {UI_VERSION}
+            </span>
           </div>
+
           {authPage === 'login' ? (
-            <AuthLoginPage email={authEmail} password={authPassword} onEmail={setAuthEmail} onPassword={setAuthPassword} onSubmit={submitAuth} />
+            <AuthLoginPage
+              email={authEmail}
+              password={authPassword}
+              onEmail={setAuthEmail}
+              onPassword={setAuthPassword}
+              onSubmit={submitAuth}
+            />
           ) : (
-            <AuthRegisterPage name={authName} email={authEmail} password={authPassword} onName={setAuthName} onEmail={setAuthEmail} onPassword={setAuthPassword} onSubmit={submitAuth} />
+            <AuthRegisterPage
+              name={authName}
+              email={authEmail}
+              password={authPassword}
+              onName={setAuthName}
+              onEmail={setAuthEmail}
+              onPassword={setAuthPassword}
+              onSubmit={submitAuth}
+            />
           )}
-          {notice && <p className="mt-4 text-sm text-cyan-200">{notice}</p>}
+
+          {notice && (
+            <p className="mt-4 text-sm text-cyan-200">{notice}</p>
+          )}
         </div>
       </main>
     );
@@ -453,6 +696,32 @@ const App = (): JSX.Element => {
   const friendDirectChat = chats.find((c) => !c.isGroup && friendProfileId && c.memberIds.includes(me.user.id) && c.memberIds.includes(friendProfileId));
   const wallpaper = prefs[me.user.id]?.wallpaperUrl;
   const theme = { ...DEFAULT_THEME, ...(prefs[me.user.id]?.theme ?? {}) };
+  // В main.tsx, добавьте функцию addMemberToGroup
+  // Найдите существующую функцию addMemberToGroup (возможно, она уже есть)
+  // и замените её на эту:
+
+  const addMembersToGroup = async (userIds: string[]): Promise<void> => {
+    if (!token || !groupProfileId) return;
+    
+    try {
+      // Добавляем каждого выбранного пользователя
+      for (const userId of userIds) {
+        await api(`/api/chats/${groupProfileId}/members`, {
+          method: 'POST',
+          body: JSON.stringify({ userId })
+        }, token);
+      }
+      
+      await refreshData();
+      setNotice(`Добавлено ${userIds.length} участников`);
+    } catch (error) {
+      setNotice((error as Error).message);
+    }
+  };
+
+  // Если функция уже существует, переименуйте её или удалите дубликат
+  // Убедитесь, что в файле нет другой функции с таким же именем
+
 
   return (
     <main
@@ -478,10 +747,14 @@ const App = (): JSX.Element => {
           appPage={appPage}
           settingsSection={settingsSection}
           onSettingsSection={setSettingsSection}
-          onSelectChat={(id) => { setActiveChatId(id); setAppPage('chat'); }}
+          onSelectChat={(id: string) => { 
+            setActiveChatId(id); 
+            setAppPage('chat'); 
+          }}
           onOpenPlus={() => setAppPage('plus')}
           onOpenSettings={() => setAppPage('settings')}
           displayName={getDisplayName}
+          getAvatarUrl={getAvatarUrl}
           uiVersion={UI_VERSION}
           avatarUrl={getAvatarUrl(me.user.id)}
           bannerUrl={getBannerUrl(me.user.id)}
@@ -498,7 +771,18 @@ const App = (): JSX.Element => {
               activeChat={activeChat}
               getDisplayName={getDisplayName}
               getAvatarUrl={getAvatarUrl}
-              onOpenFriendProfile={(id) => { setFriendProfileId(id); setAliasInput(aliases[id] || ''); setIsEditingAlias(false); setAppPage('friend-profile'); }}
+              onOpenFriendProfile={(id: string) => { 
+                setFriendProfileId(id); 
+                setAliasInput(aliases[id] || ''); 
+                setIsEditingAlias(false); 
+                setAppPage('friend-profile'); 
+              }}
+              onOpenGroupProfile={(id: string) => {
+                setGroupProfileId(id);
+                setNewGroupName(chats.find(c => c.id === id)?.name || '');
+                setIsEditingGroupName(false);
+                setAppPage('group-profile');
+              }}
               onContextMenu={onMessageContextMenu}
               replyToMessageId={replyToMessageId}
               onClearReply={() => setReplyToMessageId('')}
@@ -507,12 +791,21 @@ const App = (): JSX.Element => {
               onSend={sendMessage}
               onPickFiles={(files) => void handlePickFiles(files)}
               attachedFiles={attachedFiles}
-              onRemoveAttachedFile={(id) => setAttachedFiles((prev) => { const removing = prev.find((item) => item.id === id); if (removing?.localFile && removing.url.startsWith('blob:')) URL.revokeObjectURL(removing.url); return prev.filter((item) => item.id !== id); })}
+              onRemoveAttachedFile={(id: string) => setAttachedFiles((prev) => { 
+                const removing = prev.find((item) => item.id === id); 
+                if (removing?.localFile && removing.url.startsWith('blob:')) URL.revokeObjectURL(removing.url); 
+                return prev.filter((item) => item.id !== id); 
+              })}
               theme={theme}
             />
           )}
 
-          {appPage === 'plus' && <PlusPage onOpenAddFriend={() => setAppPage('add-friend')} onOpenCreateGroup={() => setAppPage('create-group')} />}
+          {appPage === 'plus' && (
+            <PlusPage 
+              onOpenAddFriend={() => setAppPage('add-friend')} 
+              onOpenCreateGroup={() => setAppPage('create-group')} 
+            />
+          )}
 
           {appPage === 'add-friend' && (
             <AddFriendPage
@@ -520,7 +813,7 @@ const App = (): JSX.Element => {
               onFriendEmail={setFriendEmail}
               onAddFriend={addFriend}
               requests={friendRequests}
-              onAccept={(id) => void acceptFriendRequest(id)}
+              onAccept={(id: string) => void acceptFriendRequest(id)}
             />
           )}
 
@@ -530,7 +823,9 @@ const App = (): JSX.Element => {
               onGroupName={setGroupName}
               friends={friends}
               selected={groupSelectedFriends}
-              onToggle={(id) => setGroupSelectedFriends((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]))}
+              onToggle={(id: string) => setGroupSelectedFriends((prev) => 
+                prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]
+              )}
               onCreateGroup={createGroup}
             />
           )}
@@ -571,15 +866,51 @@ const App = (): JSX.Element => {
             />
           )}
 
-          {notice && <p className="mt-4 rounded-xl bg-white/10 px-3 py-2 text-sm text-cyan-200">{notice}</p>}
+        {appPage === 'group-profile' && (
+          <GroupProfilePage
+            group={activeGroup}
+            me={me.user}
+            members={groupMembers}
+            friends={friends}
+            isEditingName={isEditingGroupName}
+            onNameChange={setNewGroupName}
+            onToggleEdit={() => setIsEditingGroupName(!isEditingGroupName)}
+            onSaveName={() => void updateGroupName(newGroupName)}
+            onLeaveGroup={() => void leaveGroup()}
+            onDeleteGroup={() => void deleteGroup()}
+            onClearChat={() => activeGroup && clearChat(activeGroup.id)}
+            onAddMember={(userIds: string[]) => void addMembersToGroup(userIds)} // Используем новое имя или правильную функцию
+            onRemoveMember={(id: string) => void removeMemberFromGroup(id)}
+            onViewMemberProfile={(id: string) => viewMemberProfile(id)}
+            isAdmin={activeGroup?.creatorId === me.user.id}
+            creatorId={activeGroup?.creatorId}
+            getAvatarUrl={getAvatarUrl}
+          />
+        )}
         </section>
       </div>
 
       {contextMenu && (
-        <div className="fixed z-50 min-w-44 rounded-xl border border-white/20 bg-slate-950/95 p-1 text-sm shadow-glass backdrop-blur-xl" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={(event) => event.stopPropagation()}>
-          <button className="block w-full rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={handleMenuReply} type="button">Ответить</button>
+        <div 
+          className="fixed z-50 min-w-44 rounded-xl border border-white/20 bg-slate-950/95 p-1 text-sm shadow-glass backdrop-blur-xl" 
+          style={{ left: contextMenu.x, top: contextMenu.y }} 
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button 
+            className="block w-full rounded-lg px-3 py-2 text-left hover:bg-white/10" 
+            onClick={handleMenuReply} 
+            type="button"
+          >
+            Ответить
+          </button>
           {contextMenu.mine && !contextMenu.deletedForEveryone && (
-            <button className="block w-full rounded-lg px-3 py-2 text-left text-rose-300 hover:bg-white/10" onClick={handleMenuDelete} type="button">Удалить для всех</button>
+            <button 
+              className="block w-full rounded-lg px-3 py-2 text-left text-rose-300 hover:bg-white/10" 
+              onClick={handleMenuDelete} 
+              type="button"
+            >
+              Удалить для всех
+            </button>
           )}
         </div>
       )}

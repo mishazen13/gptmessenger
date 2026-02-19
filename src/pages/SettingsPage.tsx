@@ -1,5 +1,8 @@
 import React from 'react';
 import { PublicUser, SettingsSection, ThemeSettings } from '../types';
+import { IoMdExit } from 'react-icons/io';
+import { FaFireExtinguisher } from 'react-icons/fa';
+import { MdLogout } from 'react-icons/md';
 
 type Props = {
   me: PublicUser;
@@ -42,7 +45,7 @@ export const SettingsPage = ({ me, section, onBack, onLogout, uiVersion, onAvata
         ← Назад
       </button>
 
-      <div className="flex-1 overflow-y-auto rounded-xl bg-slate-800/40 p-4 pr-2">
+      <div className="flex-1 overflow-y-auto rounded-xl bg-slate-800/40 p-4 pr-4">
         {section === 'profile' && (
           <div className="space-y-3">
             <h2 className="text-lg font-semibold">Профиль</h2>
@@ -58,28 +61,62 @@ export const SettingsPage = ({ me, section, onBack, onLogout, uiVersion, onAvata
 
         {section === 'personalization' && (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold">Персонализация PRO</h2>
-            <label className="block text-sm text-slate-300">Обои из проводника</label>
-            <input className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2" type="file" accept="image/*" onChange={(e) => onWallpaperFile(e.target.files?.[0] ?? null)} />
-            <label className="block text-sm text-slate-300">Основной цвет интерфейса</label>
-            <input className="accent-color-picker h-11 w-full rounded-2xl border border-white/20" type="color" value={theme.accentColor} onChange={(e) => updateThemeWithPreview('accentColor', e.target.value)} />
-
-            <Slider label="Размытие обоев" min={0} max={30} step={1} value={theme.wallpaperBlur} onChange={(v) => updateThemeWithPreview('wallpaperBlur', v)} />
-            <Slider label="Прозрачность панелей" min={0.1} max={0.8} step={0.05} value={theme.panelOpacity} onChange={(v) => updateThemeWithPreview('panelOpacity', v)} />
-            <Slider label="Прозрачность сайдбара" min={0.1} max={0.85} step={0.05} value={theme.sidebarOpacity} onChange={(v) => updateThemeWithPreview('sidebarOpacity', v)} />
-            <Slider label="Скругление пузырей" min={8} max={32} step={1} value={theme.bubbleRadius} onChange={(v) => updateThemeWithPreview('bubbleRadius', v)} />
-            <Slider label="Блюр панелей" min={0} max={24} step={1} value={theme.contentBlur} onChange={(v) => updateThemeWithPreview('contentBlur', v)} />
-            <Slider label="Размер шрифта" min={85} max={125} step={1} value={theme.fontScale} onChange={(v) => updateThemeWithPreview('fontScale', v)} />
-            <Slider label="Насыщенность темы" min={60} max={180} step={5} value={theme.saturation} onChange={(v) => updateThemeWithPreview('saturation', v)} />
-
-            <button className="rounded-xl bg-white/10 px-3 py-2 text-sm hover:bg-white/20" type="button" onClick={onResetTheme}>Сбросить тему</button>
+            <h2 className="text-lg font-semibold">Персонализация</h2>
+            <div 
+      className="flex flex-col mt-5 rounded-2xl p-4 border border-white/20 p-1" 
+      style={{ backgroundColor: `rgba(71,85,105,0.15)` }}
+    >
+            <label className="block ml-2 text-sm text-slate-300">Обои</label>
+            <div className="relative">
+            
+              <div 
+                className="relative border-2 border-dashed border-white/20 rounded-xl p-6 text-center hover:border-cyan-400/50 transition group"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const file = e.dataTransfer.files[0];
+                  if (file && file.type.startsWith('image/')) {
+                    onWallpaperFile(file);
+                  }
+                }}
+              >
+                <input 
+                  type="file" 
+                  id="wallpaper-upload"
+                  accept="image/*" 
+                  onChange={(e) => onWallpaperFile(e.target.files?.[0] ?? null)} 
+                  className="hidden" 
+                />
+                <label htmlFor="wallpaper-upload" className="cursor-pointer">
+                  <div className="text-4xl mb-3 opacity-50 group-hover:opacity-100 transition">
+                    🖼️
+                  </div>
+                  <p className="text-sm text-white/70 mb-1">
+                    <span className="text-cyan-400 font-medium">Нажмите для загрузки</span> или перетащите
+                  </p>
+                  <p className="text-xs text-white/40">
+                    Поддерживаются PNG, JPG, GIF (макс. 10MB)
+                  </p>
+                </label>
+              </div>
+              <div 
+      className="mt-5"
+    >
+              <Slider label="Размытие обоев" min={0} max={30} step={1} value={theme.wallpaperBlur} onChange={(v) => updateThemeWithPreview('wallpaperBlur', v)} />
+            </div>
+            </div>
+          </div>
+            <button className="w-full rounded-xl bg-transparent px-4 py-3 text-left text-sm transition hover:bg-rose-500/20 text-rose-300" type="button" onClick={onResetTheme}>Сбросить тему</button>
           </div>
         )}
 
         {section === 'session' && (
           <div>
             <h2 className="mb-2 text-lg font-semibold">Сессия</h2>
-            <button className="rounded-xl bg-white/10 px-4 py-2 text-sm hover:bg-white/20" onClick={onLogout} type="button">Выйти</button>
+            <button className="tall-button flex w-full items-center gap-3 rounded-xl bg-transparent px-4 py-3 text-left text-sm text-rose-300 transition hover:bg-rose-500/20" onClick={onLogout} type="button">
+            <MdLogout className="text-rose-300" />
+          Выйти из аккаунта
+            </button>
           </div>
         )}
 

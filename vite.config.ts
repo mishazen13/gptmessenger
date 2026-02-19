@@ -8,5 +8,6 @@ export default defineConfig({
       '/api': 'http://localhost:4000',
       '/uploads': 'http://localhost:4000',
     },
+    host: true
   },
 });

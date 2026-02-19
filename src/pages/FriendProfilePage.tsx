@@ -57,6 +57,8 @@ export const FriendProfilePage = ({
         </div>
       )}
 
+      
+
       <div className="mt-6 flex flex-col gap-2">
         <button className="w-full rounded-xl bg-transparent px-4 py-3 text-left text-sm transition hover:bg-white/10" disabled={!chat} onClick={onClearChat} type="button">Очистить чат</button>
         <button className="w-full rounded-xl bg-transparent px-4 py-3 text-left text-sm text-rose-300 transition hover:bg-rose-500/20" onClick={onDeleteFriend} type="button">Удалить из друзей</button>

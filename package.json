@@ -13,9 +13,15 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "framer-motion": "^12.34.0",
     "multer": "^2.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-icons": "^5.5.0",
+    "react-router-dom": "^7.13.0",
+    "simple-peer": "^9.11.1",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
     "uuid": "^11.0.3"
   },
   "devDependencies": {
@@ -23,6 +29,7 @@
     "@types/multer": "^2.0.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/simple-peer": "^9.11.9",
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.12.2",
     "@typescript-eslint/parser": "^8.12.2",
