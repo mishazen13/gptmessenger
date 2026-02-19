@@ -220,6 +220,7 @@ const App = (): JSX.Element => {
   const [manualPresence, setManualPresence] = React.useState<PresenceStatus>('online');
   const [incomingCall, setIncomingCall] = React.useState<{ from: string; fromName: string; fromAvatar?: string; type: CallType; chatId?: string } | null>(null);
   const callPeerIdRef = React.useRef('');
+  const pendingOfferRef = React.useRef<Map<string, unknown>>(new Map());
   const [callType, setCallType] = React.useState<CallType>('audio');
   const [isCallActive, setIsCallActive] = React.useState(false);
   const [callExpanded, setCallExpanded] = React.useState(true);
@@ -235,17 +236,7 @@ const App = (): JSX.Element => {
     socketService.connect(token);
 
     const onIncoming = ({ from, fromName, fromAvatar, type, chatId }: { from: string; fromName: string; fromAvatar?: string; type: CallType; chatId?: string }): void => {
-      console.log('📞🔥🔥🔥 INCOMING CALL DETECTED! 🔥🔥🔥');
-      console.log('From ID:', from);
-      console.log('From Name:', fromName);
-      console.log('Type:', type);
-      console.log('Avatar:', fromAvatar);
-      console.log('ChatId:', chatId);
-      
       setIncomingCall({ from, fromName, fromAvatar, type, chatId });
-      
-      // Дополнительная проверка - показываем alert для отладки
-      alert(`Входящий звонок от ${fromName}!`);
     };
     
     const onAccepted = (): void => {
@@ -273,53 +264,21 @@ const App = (): JSX.Element => {
     };
     
     const onSignal = ({ from, signal }: { from: string; signal: unknown }): void => {
-      console.log('📡 Received signal from:', from, 'signal type:', (signal as any).type);
-      
-      // Если это answer на наш offer - просто передаем сигнал
-      if ((signal as any).type === 'answer') {
-        console.log('📞 Received answer from:', from);
-        webrtcService.signalPeer(from, signal);
+      const signalType = (signal as { type?: string })?.type;
+      if (!signalType) {
+        console.warn('⚠️ Received signal without type from:', from);
         return;
       }
-      
-      if ((signal as any).type === 'offer') {
-        console.log('📞 Received call offer from:', from);
-        if (isCallActive) {
-          console.log('⚠️ Already in a call, ignoring offer');
-          return;
+
+      if (signalType === 'offer') {
+        const offerApplied = webrtcService.signalPeer(from, signal);
+        if (!offerApplied) {
+          pendingOfferRef.current.set(from, signal);
         }
-        // Для offer не создаем peer - это будет сделано в acceptIncomingCall
         return;
       }
-      
-      // Для остальных сигналов (candidate)
-      setTimeout(() => {
-        const signalSent = webrtcService.signalPeer(from, signal);
-        
-        if (!signalSent) {
-          console.warn('⚠️ No peer found for signal, creating new peer as receiver');
-          const local = webrtcService.getLocalStream();
-          if (!local) {
-            console.error('❌ No local stream available');
-            return;
-          }
-          
-          webrtcService.createPeer(
-            from,
-            false,
-            local,
-            (payload) => {
-              console.log('📡 Sending signal back to', from, 'type:', payload.type);
-              socketService.emit('signal', { to: from, signal: payload });
-            }
-          );
-          
-          setTimeout(() => {
-            console.log('🔄 Sending delayed signal to new peer', from);
-            webrtcService.signalPeer(from, signal);
-          }, 200);
-        }
-      }, 100);
+
+      webrtcService.signalPeer(from, signal);
     };
 
     socketService.on('call:incoming', onIncoming);
@@ -436,7 +395,7 @@ const App = (): JSX.Element => {
 
       if (localFiles.length) {
         const env = (import.meta as ImportMeta & { env?: Record<string, string | boolean> }).env;
-        const uploadBase = env?.DEV ? String(env.VITE_API_URL ?? 'http://192.168.0.106:4000') : '';
+        const uploadBase = env?.DEV ? String(env.VITE_API_URL ?? 'http://localhost:4000') : '';
         const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
         uploaded = await Promise.all(localFiles.map(async (file) => {
@@ -834,6 +793,12 @@ const App = (): JSX.Element => {
           socketService.emit('signal', { to: callData.from, signal });
         }
       );
+
+      const pendingOffer = pendingOfferRef.current.get(callData.from);
+      if (pendingOffer) {
+        webrtcService.signalPeer(callData.from, pendingOffer);
+        pendingOfferRef.current.delete(callData.from);
+      }
       
       // Устанавливаем состояние после создания peer
       setCallType(callData.type);
@@ -1158,13 +1123,6 @@ const App = (): JSX.Element => {
           }
         }}
       />
-
-      {/* Временная отладка - показать если есть входящий звонок */}
-      {incomingCall && (
-        <div style={{ position: 'fixed', top: 10, left: 10, background: 'red', color: 'white', zIndex: 9999, padding: '10px' }}>
-          🔔 Входящий звонок от: {incomingCall.fromName}
-        </div>
-      )}
 
       {contextMenu && (
         <div 

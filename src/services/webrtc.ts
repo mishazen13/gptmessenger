@@ -137,7 +137,7 @@ class WebRTCService {
 
   endAllCalls(): void {
     console.log('🔚 Ending all calls');
-    this.peers.forEach((peer, userId) => {
+    this.peers.forEach((peer) => {
       peer.destroy();
     });
     this.peers.clear();
