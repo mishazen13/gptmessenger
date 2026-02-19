@@ -254,7 +254,7 @@ export const CallOverlay = ({
           // Добавьте где-нибудь в интерфейсе
           <button 
             onClick={() => {
-              remoteStreams.forEach((stream, userId) => {
+              remoteStreams.forEach((stream) => {
                 const audio = new Audio();
                 audio.srcObject = stream;
                 audio.play().catch(e => console.log('Manual play error:', e)); 

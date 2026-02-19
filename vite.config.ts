@@ -1,35 +1,28 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const apiTarget = process.env.VITE_API_URL || 'http://localhost:4000';
+
 export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api': 'http://192.168.0.106:4000',
-      '/uploads': 'http://192.168.0.106:4000',
-      // Убираем прокси для socket.io, так как теперь подключаемся напрямую
+      '/api': apiTarget,
+      '/uploads': apiTarget,
     },
     host: true,
     port: 5173,
   },
   define: {
-<<<<<<< Updated upstream
     global: 'globalThis',
-=======
-    'global': 'globalThis',
     'process.env': {},
-    'Buffer': 'globalThis.Buffer'
->>>>>>> Stashed changes
+    Buffer: 'globalThis.Buffer',
   },
   resolve: {
     alias: {
       buffer: 'buffer/',
       process: 'process/browser',
-<<<<<<< Updated upstream
       util: 'util/',
-=======
-      util: 'util/'
->>>>>>> Stashed changes
     },
   },
   optimizeDeps: {
