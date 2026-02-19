@@ -940,7 +940,7 @@ const App = (): JSX.Element => {
       }}
     >
       <div className="absolute inset-0" style={{ backdropFilter: `blur(${theme.wallpaperBlur}px)` }} />
-      <div className="relative mx-auto grid max-w-7xl gap-4 lg:grid-cols-[320px_1fr]">
+      <div className="relative mx-auto grid gap-4 lg:grid-cols-[320px_1fr]">
         <Sidebar
           me={me.user}
           chats={chats}

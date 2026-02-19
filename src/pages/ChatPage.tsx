@@ -53,6 +53,18 @@ export const ChatPage = (props: Props): JSX.Element => {
   const [flyingText, setFlyingText] = React.useState('');
   const [sendPulse, setSendPulse] = React.useState(false);
   const endRef = React.useRef<HTMLDivElement>(null);
+  
+  // Определяем ширину экрана для адаптивного расположения сообщений
+  const [isNarrow, setIsNarrow] = React.useState(() => window.innerWidth < 768);
+
+  React.useEffect(() => {
+    const handleResize = () => {
+      setIsNarrow(window.innerWidth < 768);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   React.useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -118,14 +130,35 @@ export const ChatPage = (props: Props): JSX.Element => {
         {activeChat?.messages.map((message) => {
           const mine = message.senderId === me.id;
           const sender = users.find((u) => u.id === message.senderId);
+          
+          // На узких экранах (< 768px) сообщения по разным сторонам
+          // На широких экранах все сообщения слева
+          const messageAlignment = isNarrow 
+            ? (mine ? 'ml-auto' : 'mr-auto') 
+            : 'ml-0 mr-auto';
+          
           return (
             <article
               key={message.id}
               onContextMenu={(event) => onContextMenu(event, activeChat.id, message, mine)}
-              className={`animate-msgIn w-fit max-w-[85%] break-words whitespace-pre-wrap px-3 py-2 text-sm transition-all duration-200 ${mine ? '' : 'hover:bg-white/20'}`}
-              style={{ marginLeft: mine ? 'auto' : undefined, backgroundColor: mine ? `${theme.accentColor}CC` : 'rgba(255,255,255,0.15)', borderRadius: `${theme.bubbleRadius}px` }}
+              className={`animate-msgIn w-fit max-w-[85%] break-words whitespace-pre-wrap px-3 py-2 text-sm transition-all duration-200 ${mine ? '' : 'hover:bg-white/20'} ${messageAlignment}`}
+              style={{ 
+                backgroundColor: mine ? `${theme.accentColor}CC` : 'rgba(255,255,255,0.15)', 
+                borderRadius: `${theme.bubbleRadius}px`,
+                // На широких экранах добавляем отступ для визуального разделения
+                marginTop: '0.5rem',
+                marginBottom: '0.5rem'
+              }}
             >
-              <div className="mb-1 flex items-center gap-2 text-xs opacity-80"><Avatar imageUrl={sender ? getAvatarUrl(sender.id) : undefined} name={sender ? getDisplayName(sender) : 'Unknown'} size={20} /><span>{sender ? getDisplayName(sender) : 'Unknown'}</span><span className="ml-auto">{formatTime(message.createdAt)}</span></div>
+              <div className="mb-1 flex items-center gap-2 text-xs opacity-80">
+                <Avatar 
+                  imageUrl={sender ? getAvatarUrl(sender.id) : undefined} 
+                  name={sender ? getDisplayName(sender) : 'Unknown'} 
+                  size={20} 
+                />
+                <span>{sender ? getDisplayName(sender) : 'Unknown'}</span>
+                <span className="ml-auto">{formatTime(message.createdAt)}</span>
+              </div>
               {message.text && <p>{message.text}</p>}
             </article>
           );
@@ -133,19 +166,52 @@ export const ChatPage = (props: Props): JSX.Element => {
         <div ref={endRef} />
       </div>
 
-      {replyToMessageId && <div className="mb-2 flex items-center justify-between rounded-xl bg-white/10 px-3 py-2 text-xs animate-fadeIn"><span>Ответ</span><button className="text-cyan-400" onClick={onClearReply} type="button">Отмена</button></div>}
+      {replyToMessageId && (
+        <div className="mb-2 flex items-center justify-between rounded-xl bg-white/10 px-3 py-2 text-xs animate-fadeIn">
+          <span>Ответ</span>
+          <button className="text-cyan-400" onClick={onClearReply} type="button">Отмена</button>
+        </div>
+      )}
 
       <div className={`relative mt-5 flex flex-col rounded-2xl border border-white/20 p-2 transition-transform ${sendPulse ? 'scale-[1.01]' : ''}`} style={{ backgroundColor: 'rgba(71,85,105,0.15)' }}>
         {flyingText && <div className="pointer-events-none absolute bottom-11 left-4 rounded-xl bg-cyan-400/90 px-3 py-1 text-xs font-medium text-slate-950 animate-sendFlyBetter">{flyingText}</div>}
         <form className="flex items-end gap-2" onSubmit={submitWithFx}>
-          <AutoSizeTextarea value={messageText} onChange={(e) => onMessageText(e.target.value)} placeholder="Введите сообщение..." className="flex-1 rounded-xl bg-transparent px-3 py-2 text-white placeholder-white/50 focus:outline-none" maxRows={5} />
-          <label className="flex h-10 cursor-pointer items-center justify-center rounded-full px-3 py-2 font-semibold transition hover:opacity-90" style={{ backgroundColor: theme.accentColor }}>
+          <AutoSizeTextarea 
+            value={messageText} 
+            onChange={(e) => onMessageText(e.target.value)} 
+            placeholder="Введите сообщение..." 
+            className="flex-1 rounded-xl bg-transparent px-3 py-2 text-white placeholder-white/50 focus:outline-none" 
+            maxRows={5} 
+          />
+          <label 
+            className="flex h-10 cursor-pointer items-center justify-center rounded-full px-3 py-2 font-semibold transition hover:opacity-90" 
+            style={{ backgroundColor: theme.accentColor }}
+          >
             <FiPaperclip />
             <input className="hidden" type="file" multiple onChange={(e) => onPickFiles(e.target.files)} />
           </label>
-          <button className="h-10 rounded-full px-4 py-2 font-semibold transition hover:opacity-90" style={{ backgroundColor: theme.accentColor }} type="submit"><MdSend /></button>
+          <button 
+            className="h-10 rounded-full px-4 py-2 font-semibold transition hover:opacity-90" 
+            style={{ backgroundColor: theme.accentColor }} 
+            type="submit"
+          >
+            <MdSend />
+          </button>
         </form>
-        {!!attachedFiles.length && <div className="mt-2 grid grid-cols-2 gap-2 animate-fadeIn">{attachedFiles.map((f) => <button key={f.id} type="button" className="rounded bg-white/10 p-2 text-left text-xs transition hover:bg-white/20" onClick={() => onRemoveAttachedFile(f.id)}>{f.name}</button>)}</div>}
+        {!!attachedFiles.length && (
+          <div className="mt-2 grid grid-cols-2 gap-2 animate-fadeIn">
+            {attachedFiles.map((f) => (
+              <button 
+                key={f.id} 
+                type="button" 
+                className="rounded bg-white/10 p-2 text-left text-xs transition hover:bg-white/20" 
+                onClick={() => onRemoveAttachedFile(f.id)}
+              >
+                {f.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

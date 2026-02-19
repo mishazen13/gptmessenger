@@ -20,11 +20,47 @@ type Props = {
 
 const ParticipantTile = ({ participant, isLocal, stream, isVideoCall }: { participant: CallParticipant; isLocal: boolean; stream?: MediaStream; isVideoCall: boolean }): JSX.Element => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
-  const audioRef = React.useRef<HTMLAudioElement>(null);
   const [audioLevel, setAudioLevel] = React.useState(0);
   const [hasAudio, setHasAudio] = React.useState(false);
   const [hasVideo, setHasVideo] = React.useState(false);
-  const [playError, setPlayError] = React.useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [videoError, setVideoError] = React.useState<string | null>(null);
+
+  // Принудительное воспроизведение звука
+  const forcePlayAudio = React.useCallback(async () => {
+    if (!stream || isLocal) return;
+    
+    try {
+      const audioElement = document.createElement('audio');
+      audioElement.srcObject = stream;
+      audioElement.muted = false;
+      audioElement.style.display = 'none';
+      audioElement.setAttribute('autoplay', '');
+      
+      document.body.appendChild(audioElement);
+      
+      await audioElement.play();
+      console.log(`✅ Audio playing for ${participant.name}`);
+      setIsPlaying(true);
+      
+      return () => {
+        audioElement.pause();
+        audioElement.srcObject = null;
+        document.body.removeChild(audioElement);
+      };
+    } catch (error) {
+      console.log(`❌ Audio play error for ${participant.name}:`, error);
+      
+      const handleUserInteraction = () => {
+        forcePlayAudio();
+        document.removeEventListener('click', handleUserInteraction);
+        document.removeEventListener('touchstart', handleUserInteraction);
+      };
+      
+      document.addEventListener('click', handleUserInteraction);
+      document.addEventListener('touchstart', handleUserInteraction);
+    }
+  }, [stream, isLocal, participant.name]);
 
   React.useEffect(() => {
     if (!stream) {
@@ -39,42 +75,40 @@ const ParticipantTile = ({ participant, isLocal, stream, isVideoCall }: { partic
       audioTracks: audioTracks.length,
       videoTracks: videoTracks.length,
       active: stream.active,
-      id: stream.id
+      id: stream.id,
+      videoEnabled: participant.isVideoEnabled
     });
     
     setHasAudio(audioTracks.length > 0);
     setHasVideo(videoTracks.length > 0);
     
-    // Для локального видео - показываем в зеркальном отображении
-    if (isLocal && videoRef.current && videoTracks.length > 0) {
+    // Для удаленного потока - автоматически форсируем звук
+    if (!isLocal && audioTracks.length > 0) {
+      forcePlayAudio();
+    }
+    
+    // ВСЕГДА устанавливаем видео поток, если есть видеодорожки
+    if (videoRef.current && videoTracks.length > 0) {
       videoRef.current.srcObject = stream;
-      videoRef.current.muted = true; // Локальное видео всегда muted
-      videoRef.current.play().catch(e => {
-        console.log('Local video play error:', e);
-        setPlayError('local-video-error');
-      });
+      videoRef.current.muted = isLocal;
+      videoRef.current.playsInline = true;
+      
+      // Пытаемся воспроизвести видео
+      videoRef.current.play()
+        .then(() => {
+          console.log(`✅ Video playing for ${participant.name}${isLocal ? ' (local)' : ''}`);
+          setVideoError(null);
+        })
+        .catch(e => {
+          console.log(`❌ Video play error for ${participant.name}:`, e);
+          setVideoError(e.message);
+        });
+    } else if (videoRef.current) {
+      // Если нет видео, очищаем srcObject
+      videoRef.current.srcObject = null;
     }
     
-    // Для удаленного видео
-    if (!isLocal && videoRef.current && videoTracks.length > 0) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.muted = false;
-      videoRef.current.play().catch(e => {
-        console.log('Remote video play error:', e);
-        setPlayError('remote-video-error');
-      });
-    }
-    
-    // Для удаленного аудио (если нет видео)
-    if (!isLocal && !isVideoCall && audioRef.current && audioTracks.length > 0) {
-      audioRef.current.srcObject = stream;
-      audioRef.current.play().catch(e => {
-        console.log('Remote audio play error:', e);
-        setPlayError('remote-audio-error');
-      });
-    }
-    
-  }, [stream, participant.name, isLocal, isVideoCall]);
+  }, [stream, participant.name, isLocal, forcePlayAudio, participant.isVideoEnabled]);
 
   // Анализ уровня звука
   React.useEffect(() => {
@@ -109,36 +143,27 @@ const ParticipantTile = ({ participant, isLocal, stream, isVideoCall }: { partic
     }
   }, [stream, isLocal]);
 
-  const showVideo = isVideoCall && participant.isVideoEnabled && hasVideo;
+  // Определяем, показывать ли видео
+  const shouldShowVideo = isVideoCall && participant.isVideoEnabled && hasVideo;
   const isSpeaking = audioLevel > 0.06;
 
   return (
     <div className={`relative aspect-video overflow-hidden rounded-xl border-2 ${isSpeaking && !participant.isMuted ? 'border-green-400' : 'border-transparent'} bg-slate-900/50`}>
-      {/* Видео элемент */}
-      {showVideo ? (
+      {/* Видео элемент - показываем если есть видео и оно включено */}
+      {shouldShowVideo ? (
         <video 
           ref={videoRef} 
           autoPlay 
           playsInline 
           muted={isLocal}
-          className={`h-full w-full object-cover ${isLocal ? 'scale-x-[-1]' : ''}`} // Зеркалим локальное видео
+          className={`h-full w-full object-cover ${isLocal ? 'scale-x-[-1]' : ''}`}
         />
       ) : (
-        <div className="grid h-full place-items-center bg-gradient-to-br from-indigo-900/60 to-cyan-900/60">
+        <div className="grid h-full w-full place-items-center bg-gradient-to-br from-indigo-900/60 to-cyan-900/60">
           <Avatar name={participant.name} imageUrl={participant.avatarUrl} size={64} />
         </div>
       )}
       
-      {/* Скрытый аудио элемент для аудиозвонков */}
-      {!isLocal && !showVideo && hasAudio && (
-        <audio 
-          ref={audioRef} 
-          autoPlay 
-          playsInline
-          style={{ display: 'none' }}
-        />
-      )}
-
       {/* Индикатор уровня звука */}
       {!participant.isMuted && isSpeaking && (
         <div className="absolute bottom-0 left-0 h-1 bg-green-400" style={{ width: `${Math.min(100, audioLevel * 160)}%` }} />
@@ -147,24 +172,20 @@ const ParticipantTile = ({ participant, isLocal, stream, isVideoCall }: { partic
       {/* Информация о пользователе */}
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
         <div className="flex items-center justify-between text-xs">
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1 truncate max-w-[70%]">
             {participant.name}{isLocal ? ' (Вы)' : ''}
-            {playError && (
-              <span className="text-red-400" title={playError}>⚠️</span>
-            )}
+            {videoError && <span className="text-red-400" title={videoError}>⚠️</span>}
           </span>
           <div className="flex gap-1">
             {participant.isMuted && <MdMicOff className="text-red-400" size={14} />}
             {isSpeaking && !participant.isMuted && <MdVolumeUp className="text-green-300" size={14} />}
-            {isVideoCall && !participant.isVideoEnabled && <span className="text-xs text-white/50">📹 off</span>}
+            {isVideoCall && !participant.isVideoEnabled && <span className="text-white/50 text-[10px]">📹 off</span>}
+            {!isPlaying && !isLocal && hasAudio && (
+              <span className="text-yellow-400 text-[10px] animate-pulse">🔊</span>
+            )}
           </div>
         </div>
       </div>
-      
-      {/* Отладочная информация */}
-      {/* <div className="absolute top-0 left-0 bg-black/50 text-[8px] text-white p-1">
-        {hasAudio ? '🔊' : '🔇'} {hasVideo ? '📹' : '📷'} {audioLevel.toFixed(2)}
-      </div> */}
     </div>
   );
 };
@@ -191,34 +212,52 @@ export const CallOverlay = ({
   console.log('🎧 CallOverlay participants:', participants);
   console.log('🎧 Local stream:', localStream?.active ? 'active' : 'inactive');
   console.log('🎧 Remote streams:', remoteStreams.size);
+  console.log('🎧 Call type:', callType);
+
+  // Определяем количество колонок для сетки
+  const totalParticipants = participants.length;
+  let gridCols = 'grid-cols-1';
+  
+  if (totalParticipants === 2) {
+    gridCols = 'grid-cols-2';
+  } else if (totalParticipants === 3) {
+    gridCols = 'grid-cols-2 md:grid-cols-3';
+  } else if (totalParticipants >= 4) {
+    gridCols = 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
+  }
 
   return (
-    <div className="h-full w-full">
+    <div className="w-full rounded-xl border border-white/20 bg-slate-800/90 backdrop-blur-xl shadow-2xl animate-slideDown overflow-hidden">
+      {/* Заголовок */}
       <div className="flex items-center justify-between border-b border-white/10 bg-white/5 px-4 py-2">
-        <h3 className="text-sm">{callType === 'video' ? '📹 Видеозвонок' : '🎧 Аудиозвонок'}</h3>
-        <div className="flex gap-1">
+        <h3 className="text-sm font-medium">
+          {callType === 'video' ? '📹 Видеозвонок' : '🎧 Аудиозвонок'}
+          <span className="ml-2 text-white/50">{participants.length} уч.</span>
+        </h3>
+        <div className="flex gap-2">
           {onToggleExpand && (
-            <button onClick={onToggleExpand} className="rounded-full p-1 hover:bg-white/10" type="button">
+            <button onClick={onToggleExpand} className="rounded-full p-1.5 hover:bg-white/10 transition" type="button">
               {isExpanded ? <MdExpandLess size={18} /> : <MdExpandMore size={18} />}
             </button>
           )}
-          <button onClick={onClose} className="rounded-full p-1 hover:bg-white/10" type="button"><MdClose size={18} /></button>
+          <button onClick={onClose} className="rounded-full p-1.5 hover:bg-white/10 transition" type="button">
+            <MdClose size={18} />
+          </button>
         </div>
       </div>
 
-      <div className="space-y-2 p-3">
-        {/* Локальный участник (маленький в углу) */}
-        <div className="relative">
+      {/* Сетка участников - центрированная */}
+      <div className="p-4 flex justify-center">
+        <div className={`grid ${gridCols} gap-4 w-full max-w-6xl`}>
+          {/* Локальный участник */}
           <ParticipantTile 
             participant={localParticipant!} 
             isLocal 
             stream={localStream ?? undefined} 
             isVideoCall={callType === 'video'} 
           />
-        </div>
-        
-        {/* Удаленные участники */}
-        <div className="grid gap-2 md:grid-cols-2">
+          
+          {/* Удаленные участники */}
           {remoteParticipants.map((p) => (
             <ParticipantTile 
               key={p.userId} 
@@ -229,50 +268,38 @@ export const CallOverlay = ({
             />
           ))}
         </div>
+      </div>
 
-        {/* Элементы управления */}
-        <div className="mt-2 flex items-center justify-center gap-3 border-t border-white/10 pt-2">
+      {/* Элементы управления */}
+      <div className="flex items-center justify-center gap-3 border-t border-white/10 bg-white/5 p-4">
+        <button 
+          onClick={onToggleMute} 
+          className={`rounded-full p-3 transition-all ${localParticipant?.isMuted ? 'bg-red-500/20 text-red-400' : 'bg-white/10 hover:bg-white/20'}`} 
+          type="button"
+          title={localParticipant?.isMuted ? 'Включить микрофон' : 'Отключить микрофон'}
+        >
+          {localParticipant?.isMuted ? <MdMicOff size={20} /> : <MdMic size={20} />}
+        </button>
+        
+        {callType === 'video' && (
           <button 
-            onClick={onToggleMute} 
-            className={`rounded-full p-2 transition-all ${localParticipant?.isMuted ? 'bg-red-500/20 text-red-400' : 'bg-white/10 hover:bg-white/20'}`} 
+            onClick={onToggleVideo} 
+            className={`rounded-full p-3 transition-all ${!localParticipant?.isVideoEnabled ? 'bg-red-500/20 text-red-400' : 'bg-white/10 hover:bg-white/20'}`} 
             type="button"
-            title={localParticipant?.isMuted ? 'Включить микрофон' : 'Отключить микрофон'}
+            title={localParticipant?.isVideoEnabled ? 'Отключить камеру' : 'Включить камеру'}
           >
-            {localParticipant?.isMuted ? <MdMicOff size={18} /> : <MdMic size={18} />}
+            {localParticipant?.isVideoEnabled ? <MdVideocam size={20} /> : <MdVideocamOff size={20} />}
           </button>
-          
-          {callType === 'video' && (
-            <button 
-              onClick={onToggleVideo} 
-              className={`rounded-full p-2 transition-all ${!localParticipant?.isVideoEnabled ? 'bg-red-500/20 text-red-400' : 'bg-white/10 hover:bg-white/20'}`} 
-              type="button"
-              title={localParticipant?.isVideoEnabled ? 'Отключить камеру' : 'Включить камеру'}
-            >
-              {localParticipant?.isVideoEnabled ? <MdVideocam size={18} /> : <MdVideocamOff size={18} />}
-            </button>
-          )}
-          // Добавьте где-нибудь в интерфейсе
-          <button 
-            onClick={() => {
-              remoteStreams.forEach((stream) => {
-                const audio = new Audio();
-                audio.srcObject = stream;
-                audio.play().catch(e => console.log('Manual play error:', e)); 
-              });
-            }}
-            className="text-xs bg-blue-500 px-2 py-1 rounded"
-          >
-            🔈 Force play
-          </button>
-          <button 
-            onClick={onEndCall} 
-            className="rounded-full bg-red-500 p-2 text-white transition-all hover:bg-red-600 hover:scale-110" 
-            type="button"
-            title="Завершить звонок"
-          >
-            <MdCallEnd size={18} />
-          </button>
-        </div>
+        )}
+        
+        <button 
+          onClick={onEndCall} 
+          className="rounded-full bg-red-500 p-3 text-white transition-all hover:bg-red-600 hover:scale-110" 
+          type="button"
+          title="Завершить звонок"
+        >
+          <MdCallEnd size={20} />
+        </button>
       </div>
     </div>
   );

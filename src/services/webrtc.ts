@@ -1,9 +1,4 @@
 // services/webrtc.ts
-// Добавьте в начало файла:
-import { Buffer } from 'buffer';
-window.Buffer = Buffer;
-
-// Остальной код...
 import Peer from 'simple-peer';
 
 class WebRTCService {
@@ -137,7 +132,7 @@ class WebRTCService {
 
   endAllCalls(): void {
     console.log('🔚 Ending all calls');
-    this.peers.forEach((peer) => {
+    this.peers.forEach((peer, userId) => {
       peer.destroy();
     });
     this.peers.clear();
