@@ -125,3 +125,12 @@ input[type=range]::-moz-range-thumb:hover {
 .animate-slideDown {
   animation: slideDown 0.3s ease-out;
 }
+@keyframes pageIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px);} to { opacity: 1; transform: translateY(0);} }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.96);} to { opacity: 1; transform: scale(1);} }
+@keyframes sendFly { from { opacity: 0.9; transform: translate(0,0) scale(1);} to { opacity: 0; transform: translate(220px,-140px) scale(0.6);} }
+
+.animate-pageIn { animation: pageIn 260ms ease-out; }
+.animate-fadeIn { animation: fadeIn 220ms ease-out; }
+.animate-scaleIn { animation: scaleIn 150ms ease-out; }
+.animate-sendFly { animation: sendFly 600ms ease-out forwards; }
