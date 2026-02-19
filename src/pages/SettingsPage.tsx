@@ -1,7 +1,5 @@
 import React from 'react';
 import { PublicUser, SettingsSection, ThemeSettings } from '../types';
-import { IoMdExit } from 'react-icons/io';
-import { FaFireExtinguisher } from 'react-icons/fa';
 import { MdLogout } from 'react-icons/md';
 
 type Props = {

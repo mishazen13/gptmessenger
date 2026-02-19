@@ -13,7 +13,9 @@ import {
   PublicUser, 
   SettingsSection, 
   ThemeSettings,
-  GroupAvatar 
+  PresenceStatus,
+  CallParticipant,
+  CallType 
 } from './types';
 import { WelcomePage } from './pages/WelcomePage';
 import { AuthLoginPage } from './pages/AuthLoginPage';
@@ -26,6 +28,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { FriendProfilePage } from './pages/FriendProfilePage';
 import { CreateGroupPage } from './pages/CreateGroupPage';
 import { GroupProfilePage } from './pages/GroupProfilePage';
+import { IncomingCallModal } from './components/IncomingCallModal';
 import socketService from './services/socket';
 import webrtcService from './services/webrtc';
 
@@ -52,22 +55,6 @@ type UserPrefs = {
 };
 
 type PrefMap = Record<string, UserPrefs>;
-
-// Predefined group avatars
-const GROUP_AVATARS: GroupAvatar[] = [
-  { id: '1', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group1', name: 'Аватар 1' },
-  { id: '2', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group2', name: 'Аватар 2' },
-  { id: '3', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group3', name: 'Аватар 3' },
-  { id: '4', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group4', name: 'Аватар 4' },
-  { id: '5', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group5', name: 'Аватар 5' },
-  { id: '6', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group6', name: 'Аватар 6' },
-  { id: '7', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group7', name: 'Аватар 7' },
-  { id: '8', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group8', name: 'Аватар 8' },
-  { id: '9', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group9', name: 'Аватар 9' },
-  { id: '10', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group10', name: 'Аватар 10' },
-  { id: '11', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group11', name: 'Аватар 11' },
-  { id: '12', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=group12', name: 'Аватар 12' },
-];
 
 const readPrefs = (): PrefMap => {
   try {
@@ -225,33 +212,68 @@ const App = (): JSX.Element => {
     }
   };
 
-  const [incomingCall, setIncomingCall] = React.useState<{
-  from: string;
-  fromName: string;
-  fromAvatar?: string;
-  type: 'audio' | 'video';
-} | null>(null);
+  const [presenceMap, setPresenceMap] = React.useState<Record<string, PresenceStatus>>({});
+  const [manualPresence, setManualPresence] = React.useState<PresenceStatus>('online');
+  const [incomingCall, setIncomingCall] = React.useState<{ from: string; fromName: string; fromAvatar?: string; type: CallType; chatId?: string } | null>(null);
+  const callPeerIdRef = React.useRef('');
+  const [callType, setCallType] = React.useState<CallType>('audio');
+  const [isCallActive, setIsCallActive] = React.useState(false);
+  const [callExpanded, setCallExpanded] = React.useState(true);
+  const [participants, setParticipants] = React.useState<CallParticipant[]>([]);
+  const [remoteStreams, setRemoteStreams] = React.useState<Map<string, MediaStream>>(new Map());
 
+  const meId = me?.user.id;
 
   React.useEffect(() => {
-  if (token && me) {
+    if (!token || !me) return;
     socketService.connect(token);
-    
-    socketService.on('call:incoming', ({ from, fromName, fromAvatar, type }) => {
-      // Показываем модалку входящего звонка
-      setIncomingCall({
-        from,
-        fromName,
-        fromAvatar,
-        type
+
+    const onIncoming = ({ from, fromName, fromAvatar, type, chatId }: { from: string; fromName: string; fromAvatar?: string; type: CallType; chatId?: string }): void => {
+      setIncomingCall({ from, fromName, fromAvatar, type, chatId });
+    };
+    const onAccepted = (): void => setIsCallActive(true);
+    const onEnded = (): void => {
+      webrtcService.endAllCalls();
+      setIsCallActive(false);
+      setParticipants([]);
+      setRemoteStreams(new Map());
+      callPeerIdRef.current = '';
+    };
+    const onSignal = ({ from, signal }: { from: string; signal: unknown }): void => {
+      const local = webrtcService.getLocalStream();
+      if (!local) return;
+      if (!callPeerIdRef.current) {
+        callPeerIdRef.current = from;
+        webrtcService.createPeer(from, false, local, (payload) => socketService.emit('signal', { to: from, signal: payload }));
+      }
+      webrtcService.signalPeer(from, signal);
+    };
+
+    socketService.on('call:incoming', onIncoming);
+    socketService.on('call:accepted', onAccepted);
+    socketService.on('call:ended', onEnded);
+    socketService.on('signal', onSignal);
+    socketService.on('presence:update', (payload: Record<string, { status: PresenceStatus }>) => {
+      const flat: Record<string, PresenceStatus> = {};
+      Object.entries(payload).forEach(([id, val]) => { flat[id] = val.status; });
+      setPresenceMap(flat);
+    });
+
+    webrtcService.onRemoteStream((userId, stream) => {
+      setRemoteStreams((prev) => {
+        const next = new Map(prev);
+        next.set(userId, stream);
+        return next;
       });
     });
-    
+
+    socketService.emit('presence:set', { status: manualPresence, manual: true });
+
     return () => {
       socketService.disconnect();
+      webrtcService.endAllCalls();
     };
-  }
-}, [token, me]);
+  }, [token, meId, manualPresence]);
 
   const logout = async (): Promise<void> => {
     if (token) await api('/api/auth/logout', { method: 'POST' }, token).catch(() => null);
@@ -598,9 +620,6 @@ const App = (): JSX.Element => {
     }
   };
 
-  const addMemberToGroup = async (): Promise<void> => {
-    setNotice('Функция добавления участников в разработке');
-  };
 
   // В main.tsx, обновите функцию removeMemberFromGroup
   const removeMemberFromGroup = async (userId: string): Promise<void> => {
@@ -719,9 +738,63 @@ const App = (): JSX.Element => {
     }
   };
 
-  // Если функция уже существует, переименуйте её или удалите дубликат
-  // Убедитесь, что в файле нет другой функции с таким же именем
+  const startCall = async (type: CallType, peerId: string): Promise<void> => {
+    try {
+      const stream = await webrtcService.initLocalStream(type === 'video');
+      setCallType(type);
+      callPeerIdRef.current = peerId;
+      setParticipants([
+        { userId: me.user.id, name: getDisplayName(me.user), avatarUrl: getAvatarUrl(me.user.id), isMuted: false, isVideoEnabled: type === 'video', isSpeaking: false },
+        { userId: peerId, name: getDisplayName(me.users.find((u) => u.id === peerId) || { id: peerId, name: 'User', email: '' }), avatarUrl: getAvatarUrl(peerId), isMuted: false, isVideoEnabled: type === 'video', isSpeaking: false },
+      ]);
+      setIsCallActive(true);
+      setCallExpanded(true);
+      webrtcService.createPeer(peerId, true, stream, (signal) => socketService.emit('signal', { to: peerId, signal }));
+      socketService.emit('call:start', { to: peerId, type, chatId: activeChatId });
+    } catch (error) {
+      setNotice((error as Error).message);
+    }
+  };
 
+  const acceptIncomingCall = async (): Promise<void> => {
+    if (!incomingCall) return;
+    try {
+      const stream = await webrtcService.initLocalStream(incomingCall.type === 'video');
+      setCallType(incomingCall.type);
+      callPeerIdRef.current = incomingCall.from;
+      setIsCallActive(true);
+      setCallExpanded(true);
+      setParticipants([
+        { userId: me.user.id, name: getDisplayName(me.user), avatarUrl: getAvatarUrl(me.user.id), isMuted: false, isVideoEnabled: incomingCall.type === 'video', isSpeaking: false },
+        { userId: incomingCall.from, name: incomingCall.fromName, avatarUrl: incomingCall.fromAvatar, isMuted: false, isVideoEnabled: incomingCall.type === 'video', isSpeaking: false },
+      ]);
+      webrtcService.createPeer(incomingCall.from, false, stream, (signal) => socketService.emit('signal', { to: incomingCall.from, signal }));
+      socketService.emit('call:accept', { from: incomingCall.from });
+      setIncomingCall(null);
+    } catch (error) {
+      setNotice((error as Error).message);
+    }
+  };
+
+  const endCall = (): void => {
+    if (callPeerIdRef.current) socketService.emit('call:end', { to: callPeerIdRef.current });
+    webrtcService.endAllCalls();
+    setIsCallActive(false);
+    setParticipants([]);
+    setRemoteStreams(new Map());
+  };
+
+  const toggleMuteCall = (): void => {
+    setParticipants((prev) => prev.map((p) => p.userId === me.user.id ? { ...p, isMuted: !p.isMuted } : p));
+    const meP = participants.find((p) => p.userId === me.user.id);
+    webrtcService.toggleAudio(Boolean(meP?.isMuted));
+  };
+
+  const toggleVideoCall = (): void => {
+    setParticipants((prev) => prev.map((p) => p.userId === me.user.id ? { ...p, isVideoEnabled: !p.isVideoEnabled } : p));
+    const meP = participants.find((p) => p.userId === me.user.id);
+    webrtcService.toggleVideo(!meP?.isVideoEnabled);
+  };
 
   return (
     <main
@@ -761,9 +834,12 @@ const App = (): JSX.Element => {
           accentColor={theme.accentColor}
           sidebarOpacity={theme.sidebarOpacity}
           contentBlur={theme.contentBlur}
+          myPresence={presenceMap[me.user.id] ?? manualPresence}
+          onPresenceChange={(status) => { setManualPresence(status); socketService.emit('presence:set', { status, manual: true }); }}
         />
 
         <section className="h-[calc(100vh-2rem)]">
+          <div key={appPage} className="h-full animate-pageIn">
           {appPage === 'chat' && (
             <ChatPage
               me={me.user}
@@ -779,7 +855,7 @@ const App = (): JSX.Element => {
               }}
               onOpenGroupProfile={(id: string) => {
                 setGroupProfileId(id);
-                setNewGroupName(chats.find(c => c.id === id)?.name || '');
+                setNewGroupName(chats.find((c) => c.id === id)?.name || '');
                 setIsEditingGroupName(false);
                 setAppPage('group-profile');
               }}
@@ -797,6 +873,18 @@ const App = (): JSX.Element => {
                 return prev.filter((item) => item.id !== id); 
               })}
               theme={theme}
+              peerPresence={activeChat && !activeChat.isGroup ? (presenceMap[activeChat.memberIds.find((id) => id !== me.user.id) || ''] ?? 'offline') : 'offline'}
+              onStartCall={(type, peerId) => void startCall(type, peerId)}
+              isCallActive={isCallActive}
+              callType={callType}
+              participants={participants}
+              onEndCall={endCall}
+              onToggleMute={toggleMuteCall}
+              onToggleVideo={toggleVideoCall}
+              callExpanded={callExpanded}
+              onToggleCallExpand={() => setCallExpanded((v) => !v)}
+              localStream={webrtcService.getLocalStream()}
+              remoteStreams={remoteStreams}
             />
           )}
 
@@ -887,12 +975,21 @@ const App = (): JSX.Element => {
             getAvatarUrl={getAvatarUrl}
           />
         )}
+          </div>
         </section>
       </div>
 
+      <IncomingCallModal
+        isOpen={Boolean(incomingCall)}
+        callerName={incomingCall?.fromName ?? ''}
+        callerAvatar={incomingCall?.fromAvatar}
+        callType={incomingCall?.type ?? 'audio'}
+        onAccept={() => void acceptIncomingCall()}
+      />
+
       {contextMenu && (
         <div 
-          className="fixed z-50 min-w-44 rounded-xl border border-white/20 bg-slate-950/95 p-1 text-sm shadow-glass backdrop-blur-xl" 
+          className="animate-scaleIn fixed z-50 min-w-44 rounded-xl border border-white/20 bg-slate-950/95 p-1 text-sm shadow-glass backdrop-blur-xl" 
           style={{ left: contextMenu.x, top: contextMenu.y }} 
           onClick={(event) => event.stopPropagation()}
         >

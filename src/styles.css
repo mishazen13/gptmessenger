@@ -125,3 +125,26 @@ input[type=range]::-moz-range-thumb:hover {
 .animate-slideDown {
   animation: slideDown 0.3s ease-out;
 }
+@keyframes pageIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px);} to { opacity: 1; transform: translateY(0);} }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.96);} to { opacity: 1; transform: scale(1);} }
+@keyframes sendFly { from { opacity: 0.9; transform: translate(0,0) scale(1);} to { opacity: 0; transform: translate(220px,-140px) scale(0.6);} }
+
+.animate-pageIn { animation: pageIn 260ms ease-out; }
+.animate-fadeIn { animation: fadeIn 220ms ease-out; }
+.animate-scaleIn { animation: scaleIn 150ms ease-out; }
+.animate-sendFly { animation: sendFly 600ms ease-out forwards; }
+
+
+@keyframes panelIn { from { opacity: 0; transform: translateY(10px) scale(0.995); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes msgIn { from { opacity: 0; transform: translateY(8px) scale(0.98);} to { opacity: 1; transform: translateY(0) scale(1);} }
+@keyframes sendFlyBetter {
+  0% { opacity: 0; transform: translate(0, 12px) scale(0.8); }
+  15% { opacity: 1; transform: translate(12px, 0) scale(1); }
+  65% { opacity: 1; transform: translate(180px, -90px) scale(0.85); }
+  100% { opacity: 0; transform: translate(260px, -140px) scale(0.45); }
+}
+
+.animate-panelIn { animation: panelIn 280ms ease-out; }
+.animate-msgIn { animation: msgIn 240ms cubic-bezier(.2,.7,.2,1); }
+.animate-sendFlyBetter { animation: sendFlyBetter 850ms cubic-bezier(.2,.7,.2,1) forwards; }

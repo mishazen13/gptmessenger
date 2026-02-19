@@ -144,3 +144,5 @@ export type SignalData = {
   callId: string;
 };
 
+
+export type PresenceStatus = 'online' | 'offline' | 'dnd';
