@@ -1,7 +1,7 @@
 import React from 'react';
 import { CallParticipant, CallType } from '../types';
 import { Avatar } from './Avatar';
-import { MdCallEnd, MdMic, MdMicOff, MdVideocam, MdVideocamOff, MdVolumeUp, MdClose, MdExpandLess, MdExpandMore } from 'react-icons/md';
+import { MdCallEnd, MdMic, MdMicOff, MdVideocam, MdVideocamOff, MdVolumeUp, MdExpandLess, MdExpandMore, MdCall } from 'react-icons/md';
 
 type Props = {
   isOpen: boolean;
@@ -227,22 +227,20 @@ export const CallOverlay = ({
   }
 
   return (
-    <div className="w-full rounded-xl border border-white/20 bg-slate-800/90 backdrop-blur-xl shadow-2xl animate-slideDown overflow-hidden">
+    <div className="w-full rounded-xl border border-white/20  animate-slideDown p-4 " style={{ backgroundColor: 'rgba(71,85,105,0.15)' }}>
       {/* Заголовок */}
-      <div className="flex items-center justify-between border-b border-white/10 bg-white/5 px-4 py-2">
-        <h3 className="text-sm font-medium">
-          {callType === 'video' ? '📹 Видеозвонок' : '🎧 Аудиозвонок'}
-          <span className="ml-2 text-white/50">{participants.length} уч.</span>
-        </h3>
+      <div className="flex items-center justify-between rounded-full border border-white/10 bg-tr/5 px-4 py-2">
+        <span className="flex items-center gap-1">
+          {callType === 'video' ? <MdVideocam size={16} /> : <MdCall size={16} />}
+          <span>{callType === 'video' ? 'Видеозвонок' : 'Аудиозвонок'}</span>
+        </span>
         <div className="flex gap-2">
           {onToggleExpand && (
             <button onClick={onToggleExpand} className="rounded-full p-1.5 hover:bg-white/10 transition" type="button">
               {isExpanded ? <MdExpandLess size={18} /> : <MdExpandMore size={18} />}
             </button>
           )}
-          <button onClick={onClose} className="rounded-full p-1.5 hover:bg-white/10 transition" type="button">
-            <MdClose size={18} />
-          </button>
+
         </div>
       </div>
 
@@ -279,7 +277,7 @@ export const CallOverlay = ({
       </div>
 
       {/* Элементы управления */}
-      <div className="flex items-center justify-center gap-3 border-t border-white/10 bg-white/5 p-4">
+      <div className="flex items-center justify-center rounded-full ml-3 mr-3 mb-3 gap-3 border border-white/20 p-4 shadow-glass">
         <button 
           onClick={onToggleMute} 
           className={`rounded-full p-3 transition-all ${localParticipant?.isMuted ? 'bg-red-500/20 text-red-400' : 'bg-white/10 hover:bg-white/20'}`} 

@@ -2,7 +2,7 @@ import React from 'react';
 import { Avatar } from '../components/Avatar';
 import { Chat, Message, MessageAttachment, PublicUser, ThemeSettings, CallParticipant, CallType, PresenceStatus } from '../types';
 import { FiPaperclip } from 'react-icons/fi';
-import { MdSend, MdCall, MdVideocam } from 'react-icons/md';
+import { MdSend, MdCall, MdVideocam, MdExpand, MdExpandMore } from 'react-icons/md';
 import { AutoSizeTextarea } from '../components/AutoSizeTextarea';
 import { CallOverlay } from '../components/CallOverlay';
 
@@ -119,7 +119,7 @@ export const ChatPage = (props: Props): JSX.Element => {
                     <button onClick={() => onStartCall('audio', peer.id)} className="rounded-full bg-white/10 p-2 text-white/80 transition hover:bg-white/20" type="button"><MdCall size={20} /></button>
                     <button onClick={() => onStartCall('video', peer.id)} className="rounded-full bg-white/10 p-2 text-white/80 transition hover:bg-white/20" type="button"><MdVideocam size={20} /></button>
                   </>
-                ) : <button onClick={onToggleCallExpand} className="rounded-full bg-green-500/20 p-2 text-green-400" type="button"><MdCall size={20} /></button>}
+                ) : <button onClick={onToggleCallExpand} className="rounded-full hover:bg-white/20 transition p-2 " type="button"><MdExpandMore size={20} /></button>}
               </div>
             )}
           </div>

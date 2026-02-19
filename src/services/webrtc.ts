@@ -6,6 +6,7 @@ class WebRTCService {
   private localStream: MediaStream | null = null;
   private onRemoteStreamCallbacks: ((userId: string, stream: MediaStream) => void)[] = [];
   private onCallEndCallbacks: (() => void)[] = [];
+  private pendingOffers: Map<string, any> = new Map();
 
   async initLocalStream(videoEnabled: boolean = false): Promise<MediaStream> {
     if (this.localStream && this.localStream.active) {
@@ -17,11 +18,25 @@ class WebRTCService {
       console.log('📹 Requesting media with constraints:', { audio: true, video: videoEnabled });
       
       this.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: videoEnabled
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
+        video: videoEnabled ? {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: 'user'
+        } : false
       });
       
       console.log('📹 Media stream obtained successfully, tracks:', this.localStream.getTracks().length);
+      
+      const audioTracks = this.localStream.getAudioTracks();
+      if (audioTracks.length > 0) {
+        audioTracks[0].enabled = true;
+      }
+      
       return this.localStream;
     } catch (error) {
       console.error('❌ Failed to get user media:', error);
@@ -64,10 +79,17 @@ class WebRTCService {
       throw new Error('Stream is not active');
     }
 
+    // Если уже есть peer для этого пользователя, удаляем его
+    if (this.peers.has(userId)) {
+      console.log(`⚠️ Removing old peer for ${userId}`);
+      this.removePeer(userId);
+    }
+
+    // Важно: используем только один peer на пользователя
     const peer = new Peer({
       initiator,
       stream,
-      trickle: false,
+      trickle: true,
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
@@ -90,10 +112,21 @@ class WebRTCService {
 
     peer.on('connect', () => {
       console.log('✅ Peer connection established with:', userId);
+      // Если были отложенные предложения, очищаем их
+      this.pendingOffers.delete(userId);
     });
 
     peer.on('error', (err) => {
       console.error('❌ Peer error with', userId, ':', err);
+      
+      // Если ошибка из-за несоответствия m-lines, пробуем пересоздать peer
+      if (err.message.includes('order of m-lines')) {
+        console.log('🔄 Retrying with new peer for', userId);
+        setTimeout(() => {
+          this.removePeer(userId);
+          // Здесь можно инициировать повторное соединение
+        }, 1000);
+      }
     });
 
     peer.on('close', () => {
@@ -108,8 +141,20 @@ class WebRTCService {
   signalPeer(userId: string, signal: any): boolean {
     const peer = this.peers.get(userId);
     if (peer) {
-      console.log('🔄 Signaling peer', userId, 'with signal type:', signal.type);
       try {
+        console.log('🔄 Signaling peer', userId, 'with signal type:', signal.type);
+        
+        // Проверяем, не пытаемся ли мы применить offer, когда уже есть активное соединение
+        if (signal.type === 'offer' && this.pendingOffers.has(userId)) {
+          console.log('⚠️ Ignoring duplicate offer from', userId);
+          return true;
+        }
+        
+        // Сохраняем offer, если это предложение
+        if (signal.type === 'offer') {
+          this.pendingOffers.set(userId, signal);
+        }
+        
         peer.signal(signal);
         return true;
       } catch (error) {
@@ -128,14 +173,16 @@ class WebRTCService {
       peer.destroy();
       this.peers.delete(userId);
     }
+    this.pendingOffers.delete(userId);
   }
 
   endAllCalls(): void {
     console.log('🔚 Ending all calls');
-    this.peers.forEach((peer) => {
+    this.peers.forEach((peer, userId) => {
       peer.destroy();
     });
     this.peers.clear();
+    this.pendingOffers.clear();
     
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => {
