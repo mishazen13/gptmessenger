@@ -215,12 +215,14 @@ const App = (): JSX.Element => {
   const [presenceMap, setPresenceMap] = React.useState<Record<string, PresenceStatus>>({});
   const [manualPresence, setManualPresence] = React.useState<PresenceStatus>('online');
   const [incomingCall, setIncomingCall] = React.useState<{ from: string; fromName: string; fromAvatar?: string; type: CallType; chatId?: string } | null>(null);
-  const [callPeerId, setCallPeerId] = React.useState('');
+  const callPeerIdRef = React.useRef('');
   const [callType, setCallType] = React.useState<CallType>('audio');
   const [isCallActive, setIsCallActive] = React.useState(false);
   const [callExpanded, setCallExpanded] = React.useState(true);
   const [participants, setParticipants] = React.useState<CallParticipant[]>([]);
   const [remoteStreams, setRemoteStreams] = React.useState<Map<string, MediaStream>>(new Map());
+
+  const meId = me?.user.id;
 
   React.useEffect(() => {
     if (!token || !me) return;
@@ -235,13 +237,13 @@ const App = (): JSX.Element => {
       setIsCallActive(false);
       setParticipants([]);
       setRemoteStreams(new Map());
-      setCallPeerId('');
+      callPeerIdRef.current = '';
     };
     const onSignal = ({ from, signal }: { from: string; signal: unknown }): void => {
       const local = webrtcService.getLocalStream();
       if (!local) return;
-      if (!callPeerId) {
-        setCallPeerId(from);
+      if (!callPeerIdRef.current) {
+        callPeerIdRef.current = from;
         webrtcService.createPeer(from, false, local, (payload) => socketService.emit('signal', { to: from, signal: payload }));
       }
       webrtcService.signalPeer(from, signal);
@@ -271,7 +273,7 @@ const App = (): JSX.Element => {
       socketService.disconnect();
       webrtcService.endAllCalls();
     };
-  }, [token, me, manualPresence, callPeerId]);
+  }, [token, meId, manualPresence]);
 
   const logout = async (): Promise<void> => {
     if (token) await api('/api/auth/logout', { method: 'POST' }, token).catch(() => null);
@@ -740,7 +742,7 @@ const App = (): JSX.Element => {
     try {
       const stream = await webrtcService.initLocalStream(type === 'video');
       setCallType(type);
-      setCallPeerId(peerId);
+      callPeerIdRef.current = peerId;
       setParticipants([
         { userId: me.user.id, name: getDisplayName(me.user), avatarUrl: getAvatarUrl(me.user.id), isMuted: false, isVideoEnabled: type === 'video', isSpeaking: false },
         { userId: peerId, name: getDisplayName(me.users.find((u) => u.id === peerId) || { id: peerId, name: 'User', email: '' }), avatarUrl: getAvatarUrl(peerId), isMuted: false, isVideoEnabled: type === 'video', isSpeaking: false },
@@ -759,7 +761,7 @@ const App = (): JSX.Element => {
     try {
       const stream = await webrtcService.initLocalStream(incomingCall.type === 'video');
       setCallType(incomingCall.type);
-      setCallPeerId(incomingCall.from);
+      callPeerIdRef.current = incomingCall.from;
       setIsCallActive(true);
       setCallExpanded(true);
       setParticipants([
@@ -775,12 +777,11 @@ const App = (): JSX.Element => {
   };
 
   const endCall = (): void => {
-    if (callPeerId) socketService.emit('call:end', { to: callPeerId });
+    if (callPeerIdRef.current) socketService.emit('call:end', { to: callPeerIdRef.current });
     webrtcService.endAllCalls();
     setIsCallActive(false);
     setParticipants([]);
     setRemoteStreams(new Map());
-    setCallPeerId('');
   };
 
   const toggleMuteCall = (): void => {
@@ -851,6 +852,12 @@ const App = (): JSX.Element => {
                 setAliasInput(aliases[id] || ''); 
                 setIsEditingAlias(false); 
                 setAppPage('friend-profile'); 
+              }}
+              onOpenGroupProfile={(id: string) => {
+                setGroupProfileId(id);
+                setNewGroupName(chats.find((c) => c.id === id)?.name || '');
+                setIsEditingGroupName(false);
+                setAppPage('group-profile');
               }}
               onContextMenu={onMessageContextMenu}
               replyToMessageId={replyToMessageId}
@@ -982,7 +989,7 @@ const App = (): JSX.Element => {
 
       {contextMenu && (
         <div 
-          className="fixed z-50 min-w-44 rounded-xl border border-white/20 bg-slate-950/95 p-1 text-sm shadow-glass backdrop-blur-xl" 
+          className="animate-scaleIn fixed z-50 min-w-44 rounded-xl border border-white/20 bg-slate-950/95 p-1 text-sm shadow-glass backdrop-blur-xl" 
           style={{ left: contextMenu.x, top: contextMenu.y }} 
           onClick={(event) => event.stopPropagation()}
         >
