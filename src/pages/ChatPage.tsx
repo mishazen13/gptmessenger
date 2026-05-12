@@ -49,9 +49,10 @@ type Props = {
 
 const formatTime = (value: number): string => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const statusLabel: Record<PresenceStatus, string> = { online: 'в сети', offline: 'не в сети', dnd: 'не беспокоить' };
+const FILE_BASE_URL = `${window.location.protocol}//${window.location.hostname}:4000`;
 
 const downloadFile = (url: string, filename: string) => {
-  const fullUrl = url.startsWith('http') ? url : `http://192.168.1.104:4000${url}`;
+  const fullUrl = url.startsWith('http') ? url : `${FILE_BASE_URL}${url}`;
   const link = document.createElement('a');
   link.href = fullUrl;
   link.download = filename;
@@ -64,7 +65,7 @@ const downloadFile = (url: string, filename: string) => {
 const FullscreenViewer = ({ attachment, onClose, accentColor }: { attachment: MessageAttachment; onClose: () => void; accentColor: string }) => {
   const [isPlaying, setIsPlaying] = React.useState(false);
   const audioRef = React.useRef<HTMLAudioElement>(null);
-  const fileUrl = attachment.url.startsWith('http') ? attachment.url : `http://192.168.1.104:4000${attachment.url}`;
+  const fileUrl = attachment.url.startsWith('http') ? attachment.url : `${FILE_BASE_URL}${attachment.url}`;
   const isImage = attachment.type?.startsWith('image/') || false;
   const isVideo = attachment.type?.startsWith('video/') || false;
   const isAudio = attachment.type?.startsWith('audio/') || false;
@@ -160,7 +161,7 @@ const FullscreenViewer = ({ attachment, onClose, accentColor }: { attachment: Me
 
 const MessageAttachmentPreview = ({ attachment, theme }: { attachment: MessageAttachment; theme: ThemeSettings }) => {
   const [showFullscreen, setShowFullscreen] = React.useState(false);
-  const fileUrl = attachment.url.startsWith('http') ? attachment.url : `http://192.168.1.104:4000${attachment.url}`;
+  const fileUrl = attachment.url.startsWith('http') ? attachment.url : `${FILE_BASE_URL}${attachment.url}`;
   const isImage = attachment.type?.startsWith('image/') || false;
   const isVideo = attachment.type?.startsWith('video/') || false;
   const isAudio = attachment.type?.startsWith('audio/') || false;
