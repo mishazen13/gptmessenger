@@ -57,8 +57,8 @@ const upload = multerLib
         },
       }),
       limits: {
-        fileSize: 5 * 1024 * 1024 * 1024,
-        files: 5,
+        fileSize: 10 * 1024 * 1024,
+        files: 1,
       },
     })
   : null;
@@ -69,6 +69,10 @@ const sanitizeUser = (user) => ({
   id: user.id,
   name: user.name,
   email: user.email,
+  avatarUrl: user.images?.avatarUrl || null,
+  bannerUrl: user.images?.bannerUrl || null,
+  bio: user.bio || null,
+  lastSeen: user.lastSeen || null,
 });
 
 const getAuthUser = (req, db) => {
@@ -98,10 +102,12 @@ const ensureDirectChat = (db, userA, userB) => {
       isGroup: false,
       memberIds: [userA, userB],
       messages: [],
+      createdAt: Date.now(),
     });
   }
 };
 
+// ==================== СОЗДАНИЕ APP ====================
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
@@ -111,7 +117,12 @@ const io = new Server(server, {
   }
 });
 
-// Хранилище активных пользователей
+// ==================== MIDDLEWARE ====================
+app.use(cors());
+app.use(express.json({ limit: '30mb' }));
+app.use('/uploads', express.static(UPLOADS_DIR));
+
+// ==================== SOCKET.IO ====================
 const onlineUsers = new Map();
 const userPresence = new Map();
 
@@ -119,7 +130,6 @@ const emitPresence = () => {
   io.emit('presence:update', Object.fromEntries(userPresence.entries()));
 };
 
-// Socket.io middleware
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error('Authentication error'));
@@ -135,10 +145,17 @@ io.use((socket, next) => {
   next();
 });
 
-// Socket.io connection handler
 io.on('connection', (socket) => {
   const user = socket.data.user;
   console.log(`User connected: ${user.name} (${user.id})`);
+  
+  // Обновляем lastSeen при подключении
+  const db = readDb();
+  const userIndex = db.users.findIndex(u => u.id === user.id);
+  if (userIndex !== -1) {
+    db.users[userIndex].lastSeen = Date.now();
+    writeDb(db);
+  }
   
   onlineUsers.set(user.id, { socketId: socket.id, user });
   const previousPresence = userPresence.get(user.id);
@@ -147,7 +164,6 @@ io.on('connection', (socket) => {
     manual: previousPresence?.manual ?? false,
   });
   
-  // Отправляем всем обновленный список онлайн пользователей
   io.emit('users:online', Array.from(onlineUsers.values()).map(u => u.user.id));
   emitPresence();
 
@@ -157,18 +173,20 @@ io.on('connection', (socket) => {
     emitPresence();
   });
   
-  // Обработка звонков - ИСПРАВЛЕНО!
-  socket.on('call:start', ({ to, type }) => {
+  socket.on('call:start', ({ to, type, chatId }) => {
+    console.log('📞 call:start received from', user.name, 'to', to, 'type', type);
     const target = onlineUsers.get(to);
     if (target) {
-      console.log(`📞 Call started from ${user.name} to ${target.user.name}`);
+      console.log('📞 Target found:', target.user.name);
       io.to(target.socketId).emit('call:incoming', {
         from: user.id,
-        fromName: user.name, // ОБЯЗАТЕЛЬНО отправляем имя!
-        fromAvatar: null,
+        fromName: user.name,
+        fromAvatar: user.images?.avatarUrl || null,
         type,
-        chatId: null
+        chatId
       });
+    } else {
+      console.log('❌ Target not online:', to);
     }
   });
   
@@ -176,9 +194,7 @@ io.on('connection', (socket) => {
     const target = onlineUsers.get(from);
     if (target) {
       console.log(`📞 Call accepted by ${user.name} from ${target.user.name}`);
-      io.to(target.socketId).emit('call:accepted', {
-        to: user.id
-      });
+      io.to(target.socketId).emit('call:accepted', { to: user.id });
     }
   });
   
@@ -186,9 +202,7 @@ io.on('connection', (socket) => {
     const target = onlineUsers.get(from);
     if (target) {
       console.log(`📞 Call rejected by ${user.name}`);
-      io.to(target.socketId).emit('call:rejected', {
-        to: user.id
-      });
+      io.to(target.socketId).emit('call:rejected', { to: user.id });
     }
   });
   
@@ -196,9 +210,7 @@ io.on('connection', (socket) => {
     const target = onlineUsers.get(to);
     if (target) {
       console.log(`📞 Call ended between ${user.name} and ${target.user.name}`);
-      io.to(target.socketId).emit('call:ended', {
-        from: user.id
-      });
+      io.to(target.socketId).emit('call:ended', { from: user.id });
     }
   });
   
@@ -206,16 +218,22 @@ io.on('connection', (socket) => {
     const target = onlineUsers.get(to);
     if (target) {
       console.log(`📡 Signal from ${user.name} to ${target.user.name} type:`, signal.type);
-      io.to(target.socketId).emit('signal', {
-        from: user.id,
-        signal
-      });
+      io.to(target.socketId).emit('signal', { from: user.id, signal });
     }
   });
   
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${user.name}`);
     onlineUsers.delete(user.id);
+    
+    // Обновляем lastSeen при отключении
+    const db = readDb();
+    const userIndex = db.users.findIndex(u => u.id === user.id);
+    if (userIndex !== -1) {
+      db.users[userIndex].lastSeen = Date.now();
+      writeDb(db);
+    }
+    
     const existingPresence = userPresence.get(user.id);
     userPresence.set(user.id, {
       status: existingPresence?.manual ? existingPresence.status : 'offline',
@@ -225,10 +243,6 @@ io.on('connection', (socket) => {
     emitPresence();
   });
 });
-
-app.use(cors());
-app.use(express.json({ limit: '30mb' }));
-app.use('/uploads', express.static(UPLOADS_DIR));
 
 // ==================== AUTH ENDPOINTS ====================
 app.post('/api/auth/register', (req, res) => {
@@ -243,7 +257,21 @@ app.post('/api/auth/register', (req, res) => {
     return res.status(409).json({ error: 'user already exists' });
   }
 
-  const user = { id: uuidv4(), name: name.trim(), email: emailNormalized, password };
+  const user = { 
+    id: uuidv4(), 
+    name: name.trim(), 
+    email: emailNormalized, 
+    password,
+    images: {},
+    bio: '',
+    lastSeen: null,
+    privacy: {
+      showLastSeen: true,
+      showReadReceipts: true,
+      allowNonFriendsMessage: true,
+      showProfilePhoto: true,
+    }
+  };
   db.users.push(user);
   const token = uuidv4();
   db.sessions.push({ token, userId: user.id });
@@ -257,6 +285,13 @@ app.post('/api/auth/login', (req, res) => {
   const db = readDb();
   const user = db.users.find((item) => item.email === String(email).trim().toLowerCase() && item.password === password);
   if (!user) return res.status(401).json({ error: 'invalid credentials' });
+
+  // Обновляем lastSeen при входе
+  const userIndex = db.users.findIndex(u => u.id === user.id);
+  if (userIndex !== -1) {
+    db.users[userIndex].lastSeen = Date.now();
+    writeDb(db);
+  }
 
   const token = uuidv4();
   db.sessions.push({ token, userId: user.id });
@@ -273,10 +308,9 @@ app.post('/api/auth/logout', (req, res) => {
   return res.status(204).send();
 });
 
-app.get('/api/me', (req, res) => {
+app.get('/api/me', requireAuth, (req, res) => {
   const db = readDb();
-  const user = getAuthUser(req, db);
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  const user = req.authUser;
 
   const friendRequests = db.friendRequests
     .filter((item) => item.toUserId === user.id && item.status === 'pending')
@@ -293,11 +327,133 @@ app.get('/api/me', (req, res) => {
   });
 });
 
-// ==================== FRIENDS ENDPOINTS ====================
-app.post('/api/friends/request', (req, res) => {
+// ==================== USER BIO AND PRIVACY ENDPOINTS ====================
+app.get('/api/users/:userId/bio', (req, res) => {
   const db = readDb();
-  const user = getAuthUser(req, db);
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  const user = db.users.find(u => u.id === req.params.userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  return res.json({ 
+    bio: user.bio || '', 
+    lastSeen: user.lastSeen || null,
+    privacy: user.privacy || {
+      showLastSeen: true,
+      showReadReceipts: true,
+      allowNonFriendsMessage: true,
+      showProfilePhoto: true,
+    } 
+  });
+});
+
+app.put('/api/users/:userId/bio', requireAuth, (req, res) => {
+  const user = req.authUser;
+  if (user.id !== req.params.userId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const db = readDb();
+  const userIndex = db.users.findIndex(u => u.id === user.id);
+  if (userIndex === -1) return res.status(404).json({ error: 'User not found' });
+  
+  db.users[userIndex].bio = req.body.bio || '';
+  writeDb(db);
+  return res.json({ ok: true });
+});
+
+app.put('/api/users/:userId/privacy', requireAuth, (req, res) => {
+  const user = req.authUser;
+  if (user.id !== req.params.userId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const db = readDb();
+  const userIndex = db.users.findIndex(u => u.id === user.id);
+  if (userIndex === -1) return res.status(404).json({ error: 'User not found' });
+  
+  db.users[userIndex].privacy = {
+    ...db.users[userIndex].privacy,
+    ...req.body,
+  };
+  writeDb(db);
+  return res.json({ ok: true });
+});
+
+// ==================== USER IMAGES ENDPOINTS ====================
+app.post('/api/users/upload-image', requireAuth, upload.single('file'), (req, res) => {
+  const user = req.authUser;
+  const { field } = req.body;
+  
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  
+  if (!field || !['avatarUrl', 'bannerUrl'].includes(field)) {
+    return res.status(400).json({ error: 'Invalid field name. Use "avatarUrl" or "bannerUrl"' });
+  }
+  
+  const db = readDb();
+  const userIndex = db.users.findIndex(u => u.id === user.id);
+  
+  if (userIndex === -1) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  
+  const imageUrl = `/uploads/${req.file.filename}`;
+  
+  if (!db.users[userIndex].images) {
+    db.users[userIndex].images = {};
+  }
+  
+  db.users[userIndex].images[field] = imageUrl;
+  writeDb(db);
+  
+  return res.json({ url: imageUrl });
+});
+
+app.post('/api/users/upload-wallpaper', requireAuth, upload.single('file'), (req, res) => {
+  const user = req.authUser;
+  
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  
+  const db = readDb();
+  const userIndex = db.users.findIndex(u => u.id === user.id);
+  
+  if (userIndex === -1) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  
+  const wallpaperUrl = `/uploads/${req.file.filename}`;
+  
+  if (!db.users[userIndex].images) {
+    db.users[userIndex].images = {};
+  }
+  
+  db.users[userIndex].images.wallpaperUrl = wallpaperUrl;
+  writeDb(db);
+  
+  return res.json({ url: wallpaperUrl });
+});
+
+app.get('/api/users/:userId/images', (req, res) => {
+  const db = readDb();
+  const user = db.users.find(u => u.id === req.params.userId);
+  
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  
+  return res.json({
+    avatarUrl: user.images?.avatarUrl || null,
+    bannerUrl: user.images?.bannerUrl || null,
+    wallpaperUrl: user.images?.wallpaperUrl || null,
+  });
+});
+
+// ==================== FRIENDS ENDPOINTS ====================
+app.post('/api/friends/request', requireAuth, (req, res) => {
+  const db = readDb();
+  const user = req.authUser;
 
   const target = db.users.find((item) => item.email === String(req.body.email).trim().toLowerCase());
   if (!target) return res.status(404).json({ error: 'user not found' });
@@ -317,10 +473,9 @@ app.post('/api/friends/request', (req, res) => {
   return res.status(201).json({ ok: true });
 });
 
-app.post('/api/friends/accept', (req, res) => {
+app.post('/api/friends/accept', requireAuth, (req, res) => {
   const db = readDb();
-  const user = getAuthUser(req, db);
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  const user = req.authUser;
 
   const { fromUserId } = req.body;
   const request = db.friendRequests.find(
@@ -334,10 +489,9 @@ app.post('/api/friends/accept', (req, res) => {
   return res.json({ ok: true });
 });
 
-app.delete('/api/friends/:friendId', (req, res) => {
+app.delete('/api/friends/:friendId', requireAuth, (req, res) => {
   const db = readDb();
-  const user = getAuthUser(req, db);
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  const user = req.authUser;
 
   const { friendId } = req.params;
   db.friendRequests = db.friendRequests.filter((item) => {
@@ -352,19 +506,17 @@ app.delete('/api/friends/:friendId', (req, res) => {
 });
 
 // ==================== CHATS ENDPOINTS ====================
-app.get('/api/chats', (req, res) => {
+app.get('/api/chats', requireAuth, (req, res) => {
   const db = readDb();
-  const user = getAuthUser(req, db);
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  const user = req.authUser;
 
   const chats = db.chats.filter((chat) => chat.memberIds.includes(user.id));
   return res.json({ chats });
 });
 
-app.post('/api/chats/group', (req, res) => {
+app.post('/api/chats/group', requireAuth, (req, res) => {
   const db = readDb();
-  const user = getAuthUser(req, db);
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  const user = req.authUser;
 
   const memberIds = Array.from(new Set([user.id, ...(req.body.memberIds ?? [])]));
   if (!req.body.name?.trim() || memberIds.length < 2) {
@@ -389,8 +541,7 @@ app.post('/api/chats/group', (req, res) => {
 
 app.patch('/api/chats/:chatId', requireAuth, (req, res) => {
   const db = readDb();
-  const user = getAuthUser(req, db);
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  const user = req.authUser;
 
   const chat = db.chats.find((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
   if (!chat) return res.status(404).json({ error: 'chat not found' });
@@ -409,8 +560,7 @@ app.patch('/api/chats/:chatId', requireAuth, (req, res) => {
 
 app.post('/api/chats/:chatId/leave', requireAuth, (req, res) => {
   const db = readDb();
-  const user = getAuthUser(req, db);
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  const user = req.authUser;
 
   const chatIndex = db.chats.findIndex((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
   if (chatIndex === -1) return res.status(404).json({ error: 'chat not found' });
@@ -431,8 +581,7 @@ app.post('/api/chats/:chatId/leave', requireAuth, (req, res) => {
 
 app.delete('/api/chats/:chatId', requireAuth, (req, res) => {
   const db = readDb();
-  const user = getAuthUser(req, db);
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  const user = req.authUser;
 
   const chatIndex = db.chats.findIndex((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
   if (chatIndex === -1) return res.status(404).json({ error: 'chat not found' });
@@ -449,10 +598,9 @@ app.delete('/api/chats/:chatId', requireAuth, (req, res) => {
 });
 
 // ==================== MESSAGES ENDPOINTS ====================
-app.post('/api/chats/:chatId/messages', (req, res) => {
+app.post('/api/chats/:chatId/messages', requireAuth, (req, res) => {
   const db = readDb();
-  const user = getAuthUser(req, db);
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  const user = req.authUser;
 
   const chat = db.chats.find((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
   if (!chat) return res.status(404).json({ error: 'chat not found' });
@@ -460,7 +608,7 @@ app.post('/api/chats/:chatId/messages', (req, res) => {
   const text = String(req.body.text ?? '').trim();
   const attachmentsRaw = Array.isArray(req.body.attachments) ? req.body.attachments : [];
   const attachments = attachmentsRaw
-    .filter((item) => item && typeof item.url === 'string' && (item.url.startsWith('data:') || item.url.includes('/uploads/')))
+    .filter((item) => item && typeof item.url === 'string')
     .slice(0, 5)
     .map((item) => ({
       id: uuidv4(),
@@ -486,10 +634,9 @@ app.post('/api/chats/:chatId/messages', (req, res) => {
   return res.status(201).json({ message });
 });
 
-app.delete('/api/chats/:chatId/messages', (req, res) => {
+app.delete('/api/chats/:chatId/messages', requireAuth, (req, res) => {
   const db = readDb();
-  const user = getAuthUser(req, db);
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  const user = req.authUser;
 
   const chat = db.chats.find((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
   if (!chat) return res.status(404).json({ error: 'chat not found' });
@@ -499,10 +646,9 @@ app.delete('/api/chats/:chatId/messages', (req, res) => {
   return res.json({ ok: true });
 });
 
-app.delete('/api/chats/:chatId/messages/:messageId', (req, res) => {
+app.delete('/api/chats/:chatId/messages/:messageId', requireAuth, (req, res) => {
   const db = readDb();
-  const user = getAuthUser(req, db);
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  const user = req.authUser;
 
   const chat = db.chats.find((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
   if (!chat) return res.status(404).json({ error: 'chat not found' });
@@ -519,8 +665,7 @@ app.delete('/api/chats/:chatId/messages/:messageId', (req, res) => {
 // ==================== GROUP MEMBERS ENDPOINTS ====================
 app.post('/api/chats/:chatId/members', requireAuth, (req, res) => {
   const db = readDb();
-  const user = getAuthUser(req, db);
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  const user = req.authUser;
 
   const chat = db.chats.find((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
   if (!chat) return res.status(404).json({ error: 'chat not found' });
@@ -544,8 +689,7 @@ app.post('/api/chats/:chatId/members', requireAuth, (req, res) => {
 
 app.delete('/api/chats/:chatId/members/:userId', requireAuth, (req, res) => {
   const db = readDb();
-  const user = getAuthUser(req, db);
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  const user = req.authUser;
 
   const chat = db.chats.find((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
   if (!chat) return res.status(404).json({ error: 'chat not found' });
@@ -615,33 +759,13 @@ app.post('/api/uploads/chunk/:uploadId/finish', requireAuth, (req, res) => {
   });
 });
 
-if (!upload) {
-  app.post('/api/uploads', requireAuth, (_req, res) => {
-    return res.status(503).json({ error: 'uploads unavailable: run npm install to install multer' });
-  });
-} else {
-  app.post('/api/uploads', requireAuth, upload.array('files', 5), (req, res) => {
-    const files = Array.isArray(req.files) ? req.files : [];
-
-    return res.json({
-      files: files.map((file) => ({
-        id: uuidv4(),
-        name: file.originalname,
-        type: file.mimetype || 'application/octet-stream',
-        size: file.size,
-        url: `/uploads/${file.filename}`,
-      })),
-    });
-  });
-}
-
 // ==================== ERROR HANDLING ====================
 app.use((error, _req, res, next) => {
   if (error?.code === 'LIMIT_FILE_SIZE') {
-    return res.status(413).json({ error: 'file too large (max 5GB)' });
+    return res.status(413).json({ error: 'file too large (max 10MB)' });
   }
   if (error?.code === 'LIMIT_FILE_COUNT') {
-    return res.status(400).json({ error: 'too many files (max 5)' });
+    return res.status(400).json({ error: 'too many files (max 1)' });
   }
   return next(error);
 });
@@ -649,6 +773,7 @@ app.use((error, _req, res, next) => {
 // ==================== START SERVER ====================
 const PORT = 4000;
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`API server running on http://0.0.0.0:${PORT}`);
+server.listen(PORT, "192.168.1.104", () => {
+  console.log(`API server running on http://192.168.1.104:${PORT}`);
+  console.log(`Uploads directory: ${UPLOADS_DIR}`);
 });

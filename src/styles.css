@@ -11,6 +11,57 @@
   scrollbar-color: rgba(255, 255, 255, 0.4) transparent;
 }
 
+/* Убираем обводку у всех элементов при фокусе */
+*:focus {
+  outline: none !important;
+  ring: none !important;
+  box-shadow: none !important;
+}
+
+/* Убираем обводку у textarea при фокусе */
+textarea:focus {
+  outline: none !important;
+  ring: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Убираем обводку у input */
+input:focus {
+  outline: none !important;
+  ring: 0 !important;
+  box-shadow: none !important;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes slideOut {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+}
+
+.menu-slide-in {
+  animation: slideIn 0.2s ease-out forwards;
+}
+
+.menu-slide-out {
+  animation: slideOut 0.2s ease-out forwards;
+}
+
 /* styles.css - ультра-минималистичный вариант */
 input[type=range] {
   -webkit-appearance: none;

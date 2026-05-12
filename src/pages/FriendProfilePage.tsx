@@ -1,5 +1,6 @@
 import { Avatar } from '../components/Avatar';
-import { Chat, PublicUser } from '../types';
+import { Chat, PublicUser, PresenceStatus } from '../types';
+import { MdDescription, MdEmail, MdChat } from 'react-icons/md';
 
 type Props = {
   friend?: PublicUser;
@@ -13,6 +14,30 @@ type Props = {
   chat?: Chat;
   avatarUrl?: string;
   bannerUrl?: string;
+  presenceStatus?: PresenceStatus;
+  lastSeen?: number;
+  bio?: string;
+};
+
+const formatLastSeen = (timestamp?: number): string => {
+  if (!timestamp) return 'недавно';
+  
+  const now = Date.now();
+  const diff = now - timestamp;
+  
+  if (diff < 60000) return 'только что';
+  
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  
+  const date = new Date(timestamp);
+  const timeStr = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  
+  if (minutes < 60) return `${minutes} ${minutes === 1 ? 'минуту' : minutes < 5 ? 'минуты' : 'минут'} назад`;
+  if (hours < 24) return `сегодня в ${timeStr}`;
+  if (days === 1) return `вчера в ${timeStr}`;
+  return `${date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })} в ${timeStr}`;
 };
 
 export const FriendProfilePage = ({
@@ -27,10 +52,16 @@ export const FriendProfilePage = ({
   chat,
   avatarUrl,
   bannerUrl,
+  presenceStatus,
+  lastSeen,
+  bio,
 }: Props): JSX.Element => {
   if (!friend) {
     return <div className="rounded-2xl border border-white/20 bg-white/10 p-4 text-sm text-white/70">Пользователь не выбран.</div>;
   }
+
+  const isOnline = presenceStatus === 'online';
+  const statusText = isOnline ? 'в сети' : `был(а) ${formatLastSeen(lastSeen)}`;
 
   return (
     <div className="relative h-full rounded-2xl border border-white/20 bg-white/10 p-4">
@@ -45,6 +76,20 @@ export const FriendProfilePage = ({
           <button className="rounded bg-white/10 px-2 py-1 text-xs" onClick={onToggleEdit} type="button">✏️</button>
         </div>
         <p className="text-xs text-white/70">{friend.email}</p>
+        
+        {/* Статус */}
+        <div className="mt-1 flex items-center gap-1.5">
+          <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-slate-500'}`} />
+          <p className="text-xs text-white/50">{statusText}</p>
+        </div>
+
+        {/* О себе */}
+        {bio && (
+          <div className="mt-3 max-w-xs rounded-lg bg-white/5 px-3 py-2">
+            <p className="text-xs text-white/60">✏️ О себе</p>
+            <p className="text-sm text-white/80 break-words">{bio}</p>
+          </div>
+        )}
       </div>
 
       {isEditingAlias && (
@@ -56,8 +101,6 @@ export const FriendProfilePage = ({
           </div>
         </div>
       )}
-
-      
 
       <div className="mt-6 flex flex-col gap-2">
         <button className="w-full rounded-xl bg-transparent px-4 py-3 text-left text-sm transition hover:bg-white/10" disabled={!chat} onClick={onClearChat} type="button">Очистить чат</button>

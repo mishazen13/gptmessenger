@@ -4,8 +4,11 @@ export type PublicUser = {
   id: string;
   name: string;
   email: string;
+  online?: boolean;
+  lastSeen?: number;
+  bio?: string;
 };
-
+// types.ts
 export type MessageAttachment = {
   id: string;
   name: string;

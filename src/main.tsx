@@ -1,4 +1,4 @@
-// main.tsx - ПЕРВАЯ СТРОКА!
+// main.tsx
 import './polyfills';
 
 import React from 'react';
@@ -40,15 +40,27 @@ const UI_VERSION = 'UI v5.0';
 const PREFS_KEY = 'ui-prefs-v1';
 
 const DEFAULT_THEME: ThemeSettings = {
-  accentColor: '#22d3ee',
+  accentColor: '#06b6d4',
   wallpaperBlur: 0,
   panelOpacity: 0.15,
   sidebarOpacity: 0.15,
   bubbleRadius: 16,
   contentBlur: 14,
   fontScale: 100,
-  saturation: 100,
+  saturation: 80,
 };
+
+// Цветовые темы
+const COLOR_THEMES = [
+  { name: 'Ocean Breeze', accentColor: '#06b6d4', gradientFrom: '#0f172a', gradientTo: '#1e293b', description: 'Свежий океанский бриз' },
+  { name: 'Sunset', accentColor: '#f43f5e', gradientFrom: '#1e1b4b', gradientTo: '#2e1065', description: 'Тёплый закат' },
+  { name: 'Forest', accentColor: '#10b981', gradientFrom: '#022c22', gradientTo: '#064e3b', description: 'Лесная глушь' },
+  { name: 'Midnight', accentColor: '#8b5cf6', gradientFrom: '#0f172a', gradientTo: '#1e1b4b', description: 'Тёмная ночь' },
+  { name: 'Cherry', accentColor: '#ec4899', gradientFrom: '#2e0f1f', gradientTo: '#4c0d30', description: 'Вишнёвый сад' },
+  { name: 'Gold', accentColor: '#fbbf24', gradientFrom: '#2a1a04', gradientTo: '#3b2507', description: 'Золотая эпоха' },
+  { name: 'Emerald', accentColor: '#2dd4bf', gradientFrom: '#022c2a', gradientTo: '#064e46', description: 'Изумрудный блеск' },
+  { name: 'Lavender', accentColor: '#a78bfa', gradientFrom: '#1a0b2e', gradientTo: '#2e1065', description: 'Лавандовые поля' },
+];
 
 type UserPrefs = { 
   avatarUrl?: string; 
@@ -71,6 +83,8 @@ const readPrefs = (): PrefMap => {
 const savePrefs = (prefs: PrefMap): void => {
   localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
 };
+
+const API_BASE = 'http://192.168.1.104:4000';
 
 const App = (): JSX.Element => {
   const [groupAvatar, setGroupAvatar] = React.useState('');
@@ -103,7 +117,16 @@ const App = (): JSX.Element => {
   const [aliasInput, setAliasInput] = React.useState('');
   const [isEditingAlias, setIsEditingAlias] = React.useState(false);
 
+  const [userBio, setUserBio] = React.useState('');
+  const [privacySettings, setPrivacySettings] = React.useState({
+    showLastSeen: true,
+    showReadReceipts: true,
+    allowNonFriendsMessage: true,
+    showProfilePhoto: true,
+  });
+
   const [prefs, setPrefs] = React.useState<PrefMap>(() => readPrefs());
+  const [uploadingImage, setUploadingImage] = React.useState(false);
 
   const aliasKey = React.useMemo(() => (me ? `aliases:${me.user.id}` : ''), [me]);
   const aliases = React.useMemo<Record<string, string>>(() => {
@@ -125,6 +148,10 @@ const App = (): JSX.Element => {
   const getDisplayName = (user: PublicUser): string => aliases[user.id] || user.name;
   const getAvatarUrl = (userId: string): string | undefined => prefs[userId]?.avatarUrl;
   const getBannerUrl = (userId: string): string | undefined => prefs[userId]?.bannerUrl;
+  const getWallpaperUrl = (userId: string): string | undefined => prefs[userId]?.wallpaperUrl;
+
+  const theme = { ...DEFAULT_THEME, ...(prefs[me?.user.id || '']?.theme ?? {}) };
+  const selectedColorTheme = COLOR_THEMES.find(t => t.accentColor === theme.accentColor) || COLOR_THEMES[0];
 
   const readFileAsDataUrl = async (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -133,6 +160,23 @@ const App = (): JSX.Element => {
       reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
       reader.readAsDataURL(file);
     });
+
+  const loadUserImages = React.useCallback(async (userId: string, authToken: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/users/${userId}/images`, {
+        headers: { 'Authorization': `Bearer ${authToken}` },
+      });
+      if (response.ok) {
+        const images = await response.json();
+        setPrefs(prev => ({
+          ...prev,
+          [userId]: { ...prev[userId], avatarUrl: images.avatarUrl, bannerUrl: images.bannerUrl, wallpaperUrl: images.wallpaperUrl },
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to load user images:', error);
+    }
+  }, []);
 
   const refreshData = React.useCallback(async (silent = false) => {
     if (!token) return;
@@ -144,11 +188,21 @@ const App = (): JSX.Element => {
       ]);
       setMe(meData);
       setChats(chatData.chats);
+      await loadUserImages(meData.user.id, token);
+    } catch (error) {
+      console.error('Refresh data error:', error);
     } finally {
       if (!silent) setIsSyncing(false);
     }
-  }, [token]);
-  
+  }, [token, loadUserImages]);
+
+  React.useEffect(() => {
+    if (!token || !me) return;
+    const loadFriendsImages = async () => {
+      for (const friendId of me.friendIds) await loadUserImages(friendId, token);
+    };
+    loadFriendsImages();
+  }, [token, me, loadUserImages]);
 
   React.useEffect(() => {
     if (!token) {
@@ -204,7 +258,7 @@ const App = (): JSX.Element => {
       const payload = authPage === 'register' 
         ? { name: authName, email: authEmail, password: authPassword } 
         : { email: authEmail, password: authPassword };
-      const response = await api<{ token: string }>(endpoint, { method: 'POST', body: JSON.stringify(payload) });
+      const response = await api<{ token: string; user: PublicUser }>(endpoint, { method: 'POST', body: JSON.stringify(payload) });
       sessionStorage.setItem(TOKEN_KEY, response.token);
       setToken(response.token);
       setAuthName('');
@@ -226,86 +280,81 @@ const App = (): JSX.Element => {
   const [callExpanded, setCallExpanded] = React.useState(true);
   const [participants, setParticipants] = React.useState<CallParticipant[]>([]);
   const [remoteStreams, setRemoteStreams] = React.useState<Map<string, MediaStream>>(new Map());
-
+  const [isScreenSharing, setIsScreenSharing] = React.useState(false);
   const meId = me?.user.id;
+
+  // Разблокировка аудио контекста при первом взаимодействии
+  React.useEffect(() => {
+    const unlockAudio = () => {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+      document.removeEventListener('click', unlockAudio);
+      document.removeEventListener('touchstart', unlockAudio);
+    };
+    document.addEventListener('click', unlockAudio);
+    document.addEventListener('touchstart', unlockAudio);
+    
+    return () => {
+      document.removeEventListener('click', unlockAudio);
+      document.removeEventListener('touchstart', unlockAudio);
+    };
+  }, []);
 
   React.useEffect(() => {
     if (!token || !me) return;
-    
-    console.log('🔌 Setting up socket connection');
     socketService.connect(token);
 
-    const onIncoming = ({ from, fromName, fromAvatar, type, chatId }: { from: string; fromName: string; fromAvatar?: string; type: CallType; chatId?: string }): void => {
+    const onIncoming = ({ from, fromName, fromAvatar, type, chatId }: any) =>
       setIncomingCall({ from, fromName, fromAvatar, type, chatId });
-    };
-    
-    const onAccepted = (): void => {
-      console.log('📞 Call accepted');
-      setIsCallActive(true);
-    };
-    
-    const onRejected = ({ from }: { from: string }): void => {
-      console.log('📞 Call rejected by:', from);
+    const onAccepted = () => setIsCallActive(true);
+    const onRejected = ({ from }: any) => {
       setNotice('Звонок отклонен');
       setIsCallActive(false);
       setParticipants([]);
       setRemoteStreams(new Map());
       callPeerIdRef.current = '';
+      setIsScreenSharing(false);
       webrtcService.endAllCalls();
     };
-    
-    const onEnded = (): void => {
-      console.log('📞 Call ended');
+    const onEnded = () => {
       webrtcService.endAllCalls();
       setIsCallActive(false);
       setParticipants([]);
       setRemoteStreams(new Map());
       callPeerIdRef.current = '';
+      setIsScreenSharing(false);
     };
-    
-    const onSignal = ({ from, signal }: { from: string; signal: unknown }): void => {
+    const onSignal = ({ from, signal }: any) => {
       const signalType = (signal as { type?: string })?.type;
-      if (!signalType) {
-        console.warn('⚠️ Received signal without type from:', from);
-        return;
-      }
-
+      if (!signalType) return;
+      
       if (signalType === 'offer') {
-        const offerApplied = webrtcService.signalPeer(from, signal);
-        if (!offerApplied) {
-          pendingOfferRef.current.set(from, signal);
-        }
+        const applied = webrtcService.signalPeer(from, signal);
+        if (!applied) pendingOfferRef.current.set(from, signal);
         return;
       }
-
+      
       webrtcService.signalPeer(from, signal);
     };
-
+    
     socketService.on('call:incoming', onIncoming);
     socketService.on('call:accepted', onAccepted);
     socketService.on('call:rejected', onRejected);
     socketService.on('call:ended', onEnded);
     socketService.on('signal', onSignal);
-    
     socketService.on('presence:update', (payload: Record<string, { status: PresenceStatus }>) => {
+      console.log('📡 presence:update received:', payload);
       const flat: Record<string, PresenceStatus> = {};
-      Object.entries(payload).forEach(([id, val]) => { 
-        flat[id] = val.status; 
-      });
+      Object.entries(payload).forEach(([id, val]) => { flat[id] = val.status; });
       setPresenceMap(flat);
     });
-
     webrtcService.onRemoteStream((userId, stream) => {
-      console.log('🎥 Remote stream received from:', userId);
-      setRemoteStreams((prev) => {
-        const next = new Map(prev);
-        next.set(userId, stream);
-        return next;
-      });
+      setRemoteStreams((prev) => new Map(prev).set(userId, stream));
     });
 
     return () => {
-      console.log('🔌 Cleaning up socket event listeners ONLY');
       socketService.off('call:incoming', onIncoming);
       socketService.off('call:accepted', onAccepted);
       socketService.off('call:rejected', onRejected);
@@ -314,10 +363,8 @@ const App = (): JSX.Element => {
     };
   }, [token, meId]);
 
-  // Отдельный эффект для отправки presence
   React.useEffect(() => {
     if (!token || !me || !socketService.isConnected()) return;
-    
     console.log('📡 Sending presence update:', manualPresence);
     socketService.emit('presence:set', { status: manualPresence, manual: true });
   }, [token, meId, manualPresence]);
@@ -326,7 +373,105 @@ const App = (): JSX.Element => {
     if (token) await api('/api/auth/logout', { method: 'POST' }, token).catch(() => null);
     sessionStorage.removeItem(TOKEN_KEY);
     setToken(null);
+    setMe(null);
+    setChats([]);
+    setPrefs({});
     setNotice('Вы вышли из аккаунта.');
+    setIsFirstVisit(true);
+    setAuthPage('login');
+  };
+
+  const saveAppearanceFile = async (field: 'avatarUrl' | 'bannerUrl' | 'wallpaperUrl', file: File | null): Promise<void> => {
+    if (!me || !file || !token) return;
+    if (uploadingImage) {
+      setNotice('Подождите, предыдущее изображение загружается...');
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      const endpoint = field === 'wallpaperUrl' ? '/api/users/upload-wallpaper' : '/api/users/upload-image';
+      const formData = new FormData();
+      formData.append('file', file);
+      if (field !== 'wallpaperUrl') formData.append('field', field);
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      if (!response.ok) throw new Error((await response.json()).error || 'Upload failed');
+      const data = await response.json();
+      const serverUrl = data.url;
+      setPrefs(prev => {
+        const next = { ...prev, [me.user.id]: { ...prev[me.user.id], [field]: serverUrl } };
+        savePrefs(next);
+        return next;
+      });
+      setNotice(field === 'avatarUrl' ? '✓ Аватар сохранён' : field === 'bannerUrl' ? '✓ Баннер сохранён' : '✓ Обои сохранены');
+    } catch (error) {
+      setNotice(`Ошибка: ${(error as Error).message}`);
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const updateTheme = React.useCallback(<K extends keyof ThemeSettings>(key: K, value: ThemeSettings[K]): void => {
+    if (!me) return;
+    setPrefs(prev => {
+      const next = {
+        ...prev,
+        [me.user.id]: {
+          ...prev[me.user.id],
+          theme: { ...DEFAULT_THEME, ...(prev[me.user.id]?.theme ?? {}), [key]: value },
+        },
+      };
+      savePrefs(next);
+      return next;
+    });
+  }, [me]);
+
+  const resetTheme = React.useCallback((): void => {
+    if (!me) return;
+    setPrefs(prev => {
+      const next = { ...prev, [me.user.id]: { ...prev[me.user.id], theme: DEFAULT_THEME } };
+      savePrefs(next);
+      return next;
+    });
+    setNotice('Тема сброшена.');
+  }, [me]);
+
+  const handleUpdateBio = async (bio: string) => {
+    setUserBio(bio);
+    if (!token || !me) return;
+    try {
+      await fetch(`${API_BASE}/api/users/${me.user.id}/bio`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ bio }),
+      });
+      setNotice('Описание сохранено');
+    } catch (error) {
+      console.error('Failed to save bio:', error);
+    }
+  };
+
+  const handleUpdatePrivacy = async (key: string, value: boolean) => {
+    setPrivacySettings(prev => ({ ...prev, [key]: value }));
+    if (!token || !me) return;
+    try {
+      await fetch(`${API_BASE}/api/users/${me.user.id}/privacy`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ [key]: value }),
+      });
+    } catch (error) {
+      console.error('Failed to save privacy settings:', error);
+    }
   };
 
   const addFriend = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
@@ -367,15 +512,7 @@ const App = (): JSX.Element => {
 
   const clearChat = async (chatId: string): Promise<void> => {
     if (!token) return;
-    
-    setChats((prevChats) => 
-      prevChats.map((chat) => 
-        chat.id === chatId 
-          ? { ...chat, messages: [] } 
-          : chat
-      )
-    );
-    
+    setChats(prev => prev.map(chat => chat.id === chatId ? { ...chat, messages: [] } : chat));
     try {
       await api(`/api/chats/${chatId}/messages`, { method: 'DELETE' }, token);
       setNotice('Чат очищен.');
@@ -390,72 +527,39 @@ const App = (): JSX.Element => {
     event.preventDefault();
     if (!token || !activeChat || (!messageText.trim() && attachedFiles.length === 0)) return;
     try {
-      const localFiles = attachedFiles.filter((file) => file.localFile);
+      const localFiles = attachedFiles.filter(f => f.localFile);
       let uploaded: MessageAttachment[] = [];
-
       if (localFiles.length) {
-        const env = (import.meta as ImportMeta & { env?: Record<string, string | boolean> }).env;
-        const uploadBase = env?.DEV ? String(env.VITE_API_URL ?? 'http://localhost:4000') : '';
-        const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
         uploaded = await Promise.all(localFiles.map(async (file) => {
           const currentFile = file.localFile as File;
-          const started = await api<{ uploadId: string }>(`${uploadBase}/api/uploads/chunk/start`, {
+          const started = await api<{ uploadId: string }>(`${API_BASE}/api/uploads/chunk/start`, {
             method: 'POST',
             body: JSON.stringify({ name: currentFile.name, type: currentFile.type, size: currentFile.size }),
           }, token);
-
           const CHUNK_SIZE = 10 * 1024 * 1024;
           let offset = 0;
           while (offset < currentFile.size) {
-            const blob = currentFile.slice(offset, offset + CHUNK_SIZE);
-            const chunkBuffer = await blob.arrayBuffer();
-            const response = await fetch(`${uploadBase}/api/uploads/chunk/${started.uploadId}`, {
+            const chunk = currentFile.slice(offset, offset + CHUNK_SIZE);
+            await fetch(`${API_BASE}/api/uploads/chunk/${started.uploadId}`, {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/octet-stream',
-                ...authHeader,
-              },
-              body: chunkBuffer,
+              headers: { 'Content-Type': 'application/octet-stream', 'Authorization': `Bearer ${token}` },
+              body: await chunk.arrayBuffer(),
             });
-            if (!response.ok) {
-              const payload = (await response.json().catch(() => ({}))) as { error?: string };
-              throw new Error(payload.error ?? 'chunk upload failed');
-            }
-            offset += blob.size;
+            offset += chunk.size;
           }
-
-          const finished = await api<{ file: MessageAttachment }>(`${uploadBase}/api/uploads/chunk/${started.uploadId}/finish`, {
-            method: 'POST',
-          }, token);
+          const finished = await api<{ file: MessageAttachment }>(`${API_BASE}/api/uploads/chunk/${started.uploadId}/finish`, { method: 'POST' }, token);
           return finished.file;
         }));
       }
-
       const readyAttachments = [
-        ...attachedFiles.filter((file) => !file.localFile).map((file) => ({ 
-          id: file.id, 
-          name: file.name, 
-          type: file.type, 
-          size: file.size, 
-          url: file.url 
-        })),
+        ...attachedFiles.filter(f => !f.localFile).map(f => ({ id: f.id, name: f.name, type: f.type, size: f.size, url: f.url })),
         ...uploaded,
       ];
-
       await api(`/api/chats/${activeChat.id}/messages`, {
         method: 'POST',
-        body: JSON.stringify({
-          text: messageText,
-          replyToMessageId: replyToMessageId || undefined,
-          attachments: readyAttachments,
-        }),
+        body: JSON.stringify({ text: messageText, replyToMessageId: replyToMessageId || undefined, attachments: readyAttachments }),
       }, token);
-      
-      attachedFiles.forEach((file) => {
-        if (file.localFile && file.url.startsWith('blob:')) URL.revokeObjectURL(file.url);
-      });
-      
+      attachedFiles.forEach(f => { if (f.localFile && f.url.startsWith('blob:')) URL.revokeObjectURL(f.url); });
       setMessageText('');
       setAttachedFiles([]);
       setReplyToMessageId('');
@@ -478,14 +582,7 @@ const App = (): JSX.Element => {
 
   const onMessageContextMenu = (event: React.MouseEvent<HTMLElement>, chatId: string, message: Message, mine: boolean): void => {
     event.preventDefault();
-    setContextMenu({ 
-      x: event.clientX, 
-      y: event.clientY, 
-      chatId, 
-      messageId: message.id, 
-      mine, 
-      deletedForEveryone: Boolean(message.deletedForEveryone) 
-    });
+    setContextMenu({ x: event.clientX, y: event.clientY, chatId, messageId: message.id, mine, deletedForEveryone: Boolean(message.deletedForEveryone) });
   };
 
   const handleMenuReply = (): void => {
@@ -500,73 +597,21 @@ const App = (): JSX.Element => {
     setContextMenu(null);
   };
 
-  const saveAppearanceFile = async (field: 'avatarUrl' | 'bannerUrl' | 'wallpaperUrl', file: File | null): Promise<void> => {
-    if (!me || !file) return;
-    try {
-      const value = await readFileAsDataUrl(file);
-      const next = {
-        ...prefs,
-        [me.user.id]: {
-          ...prefs[me.user.id],
-          [field]: value,
-        },
-      };
-      setPrefs(next);
-      savePrefs(next);
-      setNotice(field === 'avatarUrl' ? 'Аватар сохранён.' : field === 'bannerUrl' ? 'Баннер сохранён.' : 'Обои сохранены.');
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
-  };
-
-  const updateTheme = <K extends keyof ThemeSettings>(key: K, value: ThemeSettings[K]): void => {
-    if (!me) return;
-    const next = {
-      ...prefs,
-      [me.user.id]: {
-        ...prefs[me.user.id],
-        theme: {
-          ...DEFAULT_THEME,
-          ...(prefs[me.user.id]?.theme ?? {}),
-          [key]: value,
-        },
-      },
-    };
-    setPrefs(next);
-    savePrefs(next);
-  };
-
-  const resetTheme = (): void => {
-    if (!me) return;
-    const next = {
-      ...prefs,
-      [me.user.id]: {
-        ...prefs[me.user.id],
-        theme: DEFAULT_THEME,
-      },
-    };
-    setPrefs(next);
-    savePrefs(next);
-    setNotice('Тема сброшена.');
-  };
-
   const handlePickFiles = async (files: FileList | null): Promise<void> => {
     if (!files?.length) return;
     try {
       const MAX_FILE_BYTES = 5 * 1024 * 1024 * 1024;
       const allowed = Array.from(files).slice(0, 5);
-      const tooBig = allowed.find((file) => file.size > MAX_FILE_BYTES);
+      const tooBig = allowed.find(f => f.size > MAX_FILE_BYTES);
       if (tooBig) {
         setNotice(`Файл ${tooBig.name} слишком большой. Лимит 5 ГБ на файл.`);
         return;
       }
-
       if (attachedFiles.length + allowed.length > 5) {
         setNotice('Можно прикрепить не более 5 файлов к сообщению.');
         return;
       }
-
-      const nextFiles = allowed.map((file) => ({
+      const nextFiles = allowed.map(file => ({
         id: crypto.randomUUID(),
         name: file.name,
         type: file.type || 'application/octet-stream',
@@ -574,7 +619,7 @@ const App = (): JSX.Element => {
         url: URL.createObjectURL(file),
         localFile: file,
       }));
-      setAttachedFiles((prev) => [...prev, ...nextFiles].slice(0, 5));
+      setAttachedFiles(prev => [...prev, ...nextFiles].slice(0, 5));
     } catch (error) {
       setNotice((error as Error).message);
     }
@@ -584,15 +629,10 @@ const App = (): JSX.Element => {
     event.preventDefault();
     if (!token) return;
     try {
-      const created = await api<{ chat: Chat }>('/api/chats/group', { 
-        method: 'POST', 
-        body: JSON.stringify({ 
-          name: groupName, 
-          memberIds: groupSelectedFriends,
-          avatarUrl: groupAvatar || undefined
-        }) 
+      const created = await api<{ chat: Chat }>('/api/chats/group', {
+        method: 'POST',
+        body: JSON.stringify({ name: groupName, memberIds: groupSelectedFriends, avatarUrl: groupAvatar || undefined }),
       }, token);
-      
       setGroupName('');
       setGroupSelectedFriends([]);
       setGroupAvatar('');
@@ -607,10 +647,7 @@ const App = (): JSX.Element => {
   const updateGroupName = async (newName: string): Promise<void> => {
     if (!token || !groupProfileId) return;
     try {
-      await api(`/api/chats/${groupProfileId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ name: newName })
-      }, token);
+      await api(`/api/chats/${groupProfileId}`, { method: 'PATCH', body: JSON.stringify({ name: newName }) }, token);
       setIsEditingGroupName(false);
       await refreshData();
       setNotice('Название группы обновлено');
@@ -621,13 +658,10 @@ const App = (): JSX.Element => {
 
   const leaveGroup = async (): Promise<void> => {
     if (!token || !groupProfileId) return;
-    
     const groupId = groupProfileId;
-    
-    setChats((prevChats) => prevChats.filter((chat) => chat.id !== groupId));
+    setChats(prev => prev.filter(chat => chat.id !== groupId));
     setAppPage('chat');
     setGroupProfileId('');
-    
     try {
       await api(`/api/chats/${groupId}/leave`, { method: 'POST' }, token);
       setNotice('Вы покинули группу');
@@ -640,13 +674,10 @@ const App = (): JSX.Element => {
 
   const deleteGroup = async (): Promise<void> => {
     if (!token || !groupProfileId) return;
-    
     const groupId = groupProfileId;
-    
-    setChats((prevChats) => prevChats.filter((chat) => chat.id !== groupId));
+    setChats(prev => prev.filter(chat => chat.id !== groupId));
     setAppPage('chat');
     setGroupProfileId('');
-    
     try {
       await api(`/api/chats/${groupId}`, { method: 'DELETE' }, token);
       setNotice('Группа удалена');
@@ -659,15 +690,7 @@ const App = (): JSX.Element => {
 
   const removeMemberFromGroup = async (userId: string): Promise<void> => {
     if (!token || !groupProfileId) return;
-    
-    setChats((prevChats) => 
-      prevChats.map((chat) => 
-        chat.id === groupProfileId 
-          ? { ...chat, memberIds: chat.memberIds.filter(id => id !== userId) } 
-          : chat
-      )
-    );
-    
+    setChats(prev => prev.map(chat => chat.id === groupProfileId ? { ...chat, memberIds: chat.memberIds.filter(id => id !== userId) } : chat));
     try {
       await api(`/api/chats/${groupProfileId}/members/${userId}`, { method: 'DELETE' }, token);
       setNotice('Участник удален из группы');
@@ -687,15 +710,10 @@ const App = (): JSX.Element => {
 
   const addMembersToGroup = async (userIds: string[]): Promise<void> => {
     if (!token || !groupProfileId) return;
-    
     try {
       for (const userId of userIds) {
-        await api(`/api/chats/${groupProfileId}/members`, {
-          method: 'POST',
-          body: JSON.stringify({ userId })
-        }, token);
+        await api(`/api/chats/${groupProfileId}/members`, { method: 'POST', body: JSON.stringify({ userId }) }, token);
       }
-      
       await refreshData();
       setNotice(`Добавлено ${userIds.length} участников`);
     } catch (error) {
@@ -705,58 +723,35 @@ const App = (): JSX.Element => {
 
   const startCall = async (type: CallType, peerId: string): Promise<void> => {
     try {
-      console.log('📞 Starting call to:', peerId, 'type:', type);
+      if (!me) throw new Error('User not authenticated');
       
-      if (!me) {
-        throw new Error('User not authenticated');
+      const targetUser = me.users.find(u => u.id === peerId);
+      if (!targetUser) {
+        console.error('❌ Target user not found:', peerId);
+        setNotice('Пользователь не найден');
+        return;
       }
       
-      if (!peerId) {
-        throw new Error('Peer ID is missing');
-      }
+      console.log('📞 Starting call to user:', targetUser.name, 'ID:', peerId);
       
       const stream = await webrtcService.initLocalStream(type === 'video');
-      console.log('🎥 Local stream obtained, tracks:', stream.getTracks().length);
-      
       setCallType(type);
       callPeerIdRef.current = peerId;
       
-      const newParticipants: CallParticipant[] = [
-        { 
-          userId: me.user.id, 
-          name: getDisplayName(me.user), 
-          avatarUrl: getAvatarUrl(me.user.id), 
-          isMuted: false, 
-          isVideoEnabled: type === 'video', 
-          isSpeaking: false 
-        },
-        { 
-          userId: peerId, 
-          name: getDisplayName(me.users.find((u) => u.id === peerId) || { id: peerId, name: 'User', email: '' }), 
-          avatarUrl: getAvatarUrl(peerId), 
-          isMuted: false, 
-          isVideoEnabled: type === 'video', 
-          isSpeaking: false 
-        },
-      ];
-      
-      setParticipants(newParticipants);
+      setParticipants([
+        { userId: me.user.id, name: getDisplayName(me.user), avatarUrl: getAvatarUrl(me.user.id), isMuted: false, isVideoEnabled: type === 'video', isSpeaking: false },
+        { userId: peerId, name: getDisplayName(targetUser), avatarUrl: getAvatarUrl(peerId), isMuted: false, isVideoEnabled: type === 'video', isSpeaking: false },
+      ]);
       setIsCallActive(true);
       setCallExpanded(true);
       
-      console.log('🔄 Creating peer as initiator');
-      webrtcService.createPeer(
-        peerId, 
-        true, 
-        stream, 
-        (signal) => {
-          console.log('📡 Sending signal to', peerId, 'signal type:', signal.type);
-          socketService.emit('signal', { to: peerId, signal });
-        }
-      );
+      webrtcService.createPeer(peerId, true, stream, (signal) => {
+        console.log('📡 Sending signal to', peerId, 'type:', signal.type);
+        socketService.emit('signal', { to: peerId, signal });
+      });
       
-      console.log('📢 Emitting call:start to', peerId);
       socketService.emit('call:start', { to: peerId, type, chatId: activeChatId });
+      console.log('📢 Emitted call:start to', peerId);
       
     } catch (error: any) {
       console.error('❌ Failed to start call:', error);
@@ -766,68 +761,34 @@ const App = (): JSX.Element => {
 
   const acceptIncomingCall = async (): Promise<void> => {
     if (!incomingCall) return;
-    
     try {
-      console.log('📞 Accepting call from:', incomingCall.from);
-      
-      if (!me) {
-        throw new Error('User not authenticated');
-      }
-      
-      // Сохраняем данные звонка
       const callData = { ...incomingCall };
-      setIncomingCall(null); // Убираем модальное окно
-      
-      // Получаем локальный поток
+      setIncomingCall(null);
       const stream = await webrtcService.initLocalStream(callData.type === 'video');
-      console.log('🎥 Local stream obtained for answer');
       
-      // Создаем peer как receiver
-      console.log('🔄 Creating peer as receiver for', callData.from);
-      webrtcService.createPeer(
-        callData.from, 
-        false, // initiator: false (мы отвечаем на звонок)
-        stream, 
-        (signal) => {
-          console.log('📡 Sending answer signal to', callData.from, 'type:', signal.type);
-          socketService.emit('signal', { to: callData.from, signal });
-        }
-      );
-
+      webrtcService.createPeer(callData.from, false, stream, (signal) => {
+        console.log('📡 Sending answer signal to', callData.from, 'type:', signal.type);
+        socketService.emit('signal', { to: callData.from, signal });
+      });
+      
       const pendingOffer = pendingOfferRef.current.get(callData.from);
       if (pendingOffer) {
         webrtcService.signalPeer(callData.from, pendingOffer);
         pendingOfferRef.current.delete(callData.from);
       }
       
-      // Устанавливаем состояние после создания peer
       setCallType(callData.type);
       callPeerIdRef.current = callData.from;
       setIsCallActive(true);
       setCallExpanded(true);
       
       setParticipants([
-        { 
-          userId: me.user.id, 
-          name: getDisplayName(me.user), 
-          avatarUrl: getAvatarUrl(me.user.id), 
-          isMuted: false, 
-          isVideoEnabled: callData.type === 'video', 
-          isSpeaking: false 
-        },
-        { 
-          userId: callData.from, 
-          name: callData.fromName, 
-          avatarUrl: callData.fromAvatar, 
-          isMuted: false, 
-          isVideoEnabled: callData.type === 'video', 
-          isSpeaking: false 
-        },
+        { userId: me!.user.id, name: getDisplayName(me!.user), avatarUrl: getAvatarUrl(me!.user.id), isMuted: false, isVideoEnabled: callData.type === 'video', isSpeaking: false },
+        { userId: callData.from, name: callData.fromName, avatarUrl: callData.fromAvatar, isMuted: false, isVideoEnabled: callData.type === 'video', isSpeaking: false },
       ]);
       
-      // Отправляем подтверждение
-      console.log('📢 Sending call:accept to', callData.from);
       socketService.emit('call:accept', { from: callData.from });
+      console.log('📢 Emitted call:accept to', callData.from);
       
     } catch (error) {
       console.error('❌ Failed to accept call:', error);
@@ -835,125 +796,137 @@ const App = (): JSX.Element => {
       setIsCallActive(false);
     }
   };
-  
+
   const endCall = (): void => {
-    console.log('🔚 Ending call');
-    if (callPeerIdRef.current) {
-      socketService.emit('call:end', { to: callPeerIdRef.current });
-    }
+    if (callPeerIdRef.current) socketService.emit('call:end', { to: callPeerIdRef.current });
     webrtcService.endAllCalls();
     setIsCallActive(false);
     setParticipants([]);
     setRemoteStreams(new Map());
     callPeerIdRef.current = '';
+    setIsScreenSharing(false);
   };
 
   const toggleMuteCall = (): void => {
     if (!me) return;
-    setParticipants((prev) => prev.map((p) => p.userId === me.user.id ? { ...p, isMuted: !p.isMuted } : p));
-    const meP = participants.find((p) => p.userId === me.user.id);
+    setParticipants(prev => prev.map(p => p.userId === me.user.id ? { ...p, isMuted: !p.isMuted } : p));
+    const meP = participants.find(p => p.userId === me.user.id);
     webrtcService.toggleAudio(Boolean(meP?.isMuted));
   };
 
   const toggleVideoCall = (): void => {
     if (!me) return;
-    setParticipants((prev) => prev.map((p) => p.userId === me.user.id ? { ...p, isVideoEnabled: !p.isVideoEnabled } : p));
-    const meP = participants.find((p) => p.userId === me.user.id);
+    setParticipants(prev => prev.map(p => p.userId === me.user.id ? { ...p, isVideoEnabled: !p.isVideoEnabled } : p));
+    const meP = participants.find(p => p.userId === me.user.id);
     webrtcService.toggleVideo(!meP?.isVideoEnabled);
   };
 
-  if (!me) {
+  const toggleScreenShare = async (): Promise<void> => {
+    if (!me || !callPeerIdRef.current || !activeChat) {
+      setNotice('Нет активного звонка');
+      return;
+    }
+    
+    try {
+      if (!isScreenSharing) {
+        const screenStream = await webrtcService.startScreenShare();
+        if (screenStream) {
+          await webrtcService.replaceLocalStream(screenStream, true);
+          setIsScreenSharing(true);
+          setNotice('Демонстрация экрана начата');
+        } else {
+          setNotice('Не удалось начать демонстрацию экрана');
+        }
+      } else {
+        await webrtcService.stopScreenShare();
+        setIsScreenSharing(false);
+        setNotice('Демонстрация экрана остановлена');
+      }
+    } catch (error) {
+      console.error('❌ Screen share error:', error);
+      setNotice('Ошибка при демонстрации экрана');
+    }
+  };
+
+  // Если нет авторизации
+  if (!token || !me) {
     if (isFirstVisit) {
       return (
         <WelcomePage
-          onRegister={() => {
-            setAuthPage('register');
-            setIsFirstVisit(false);
-            localStorage.setItem('liquid-visited', 'true');
-          }}
-          onLogin={() => {
-            setAuthPage('login');
-            setIsFirstVisit(false);
-            localStorage.setItem('liquid-visited', 'true');
-          }}
+          onRegister={() => { setAuthPage('register'); setIsFirstVisit(false); localStorage.setItem('liquid-visited', 'true'); }}
+          onLogin={() => { setAuthPage('login'); setIsFirstVisit(false); localStorage.setItem('liquid-visited', 'true'); }}
         />
       );
     }
-
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-950 via-slate-950 to-cyan-950 p-4 text-white">
         <div className="max-w-md w-full rounded-3xl border border-white/20 bg-white/10 p-6 shadow-glass backdrop-blur-xl">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <h1 className="text-3xl font-bold">Авторизация</h1>
-            <span className="rounded-full bg-cyan-300/20 px-3 py-1 text-xs text-cyan-100">
-              {UI_VERSION}
-            </span>
+            <h1 className="text-3xl font-bold">{authPage === 'login' ? 'Вход' : 'Регистрация'}</h1>
+            <span className="rounded-full bg-cyan-300/20 px-3 py-1 text-xs text-cyan-100">{UI_VERSION}</span>
           </div>
-
           {authPage === 'login' ? (
             <AuthLoginPage
-              email={authEmail}
-              password={authPassword}
-              onEmail={setAuthEmail}
-              onPassword={setAuthPassword}
-              onSubmit={submitAuth}
+              email={authEmail} password={authPassword} onEmail={setAuthEmail} onPassword={setAuthPassword}
+              onSubmit={submitAuth} onBack={() => { setIsFirstVisit(true); setAuthPage('login'); }}
             />
           ) : (
             <AuthRegisterPage
-              name={authName}
-              email={authEmail}
-              password={authPassword}
-              onName={setAuthName}
-              onEmail={setAuthEmail}
-              onPassword={setAuthPassword}
-              onSubmit={submitAuth}
+              name={authName} email={authEmail} password={authPassword}
+              onName={setAuthName} onEmail={setAuthEmail} onPassword={setAuthPassword}
+              onSubmit={submitAuth} onBack={() => { setIsFirstVisit(true); setAuthPage('login'); }}
             />
           )}
-
-          {notice && (
-            <p className="mt-4 text-sm text-cyan-200">{notice}</p>
-          )}
+          <div className="mt-4 text-center text-sm">
+            {authPage === 'login' ? (
+              <p>Нет аккаунта? <button onClick={() => setAuthPage('register')} className="text-cyan-400 hover:text-cyan-300">Зарегистрироваться</button></p>
+            ) : (
+              <p>Уже есть аккаунт? <button onClick={() => setAuthPage('login')} className="text-cyan-400 hover:text-cyan-300">Войти</button></p>
+            )}
+          </div>
+          {notice && <p className="mt-4 text-sm text-cyan-200 text-center">{notice}</p>}
         </div>
       </main>
     );
   }
 
-  const usersMap = new Map(me.users.map((user) => [user.id, user]));
-  const friends = me.friendIds.map((id) => usersMap.get(id)).filter(Boolean) as PublicUser[];
-  const friendRequests = me.incomingRequestIds.map((id) => usersMap.get(id)).filter(Boolean) as PublicUser[];
-  const friend = me.users.find((u) => u.id === friendProfileId);
-  const friendDirectChat = chats.find((c) => !c.isGroup && friendProfileId && c.memberIds.includes(me.user.id) && c.memberIds.includes(friendProfileId));
-  const wallpaper = prefs[me.user.id]?.wallpaperUrl;
-  const theme = { ...DEFAULT_THEME, ...(prefs[me.user.id]?.theme ?? {}) };
+  const wallpaper = getWallpaperUrl(me.user.id);
+  const peerId = activeChat && !activeChat.isGroup 
+    ? activeChat.memberIds.find(id => id !== me.user.id) 
+    : null;
+  const peerLastSeen = peerId 
+    ? me.users.find(u => u.id === peerId)?.lastSeen 
+    : undefined;
+  const peerPresenceValue = peerId ? (presenceMap[peerId] || 'offline') : 'offline';
+
+  console.log('👤 Peer ID:', peerId, 'Peer Presence:', peerPresenceValue, 'Peer LastSeen:', peerLastSeen);
 
   return (
     <main
-      className="relative min-h-screen overflow-hidden p-4 text-white"
+      className="relative min-h-screen overflow-hidden p-4 text-white transition-all duration-500"
       style={{
         backgroundImage: wallpaper
-          ? `linear-gradient(130deg, rgba(30,27,75,0.88), rgba(2,6,23,0.86), rgba(8,145,178,0.65)), url(${wallpaper})`
-          : 'linear-gradient(130deg, rgb(30 27 75), rgb(2 6 23), rgb(8 47 73))',
+          ? `linear-gradient(135deg, ${selectedColorTheme.gradientFrom}, ${selectedColorTheme.gradientTo}), url(${API_BASE}${wallpaper})`
+          : `linear-gradient(135deg, ${selectedColorTheme.gradientFrom}, ${selectedColorTheme.gradientTo})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         filter: `saturate(${theme.saturation}%)`,
         fontSize: `${theme.fontScale}%`,
       }}
     >
-      <div className="absolute inset-0" style={{ backdropFilter: `blur(${theme.wallpaperBlur}px)` }} />
+      <div className="absolute inset-0 transition-all duration-500" style={{ backdropFilter: `blur(${theme.wallpaperBlur}px)` }} />
       <div className="relative mx-auto grid gap-4 lg:grid-cols-[320px_1fr]">
         <Sidebar
           me={me.user}
           chats={chats}
           users={me.users}
           activeChatId={activeChatId}
+          getBannerUrl={getBannerUrl}
           isSyncing={isSyncing}
           appPage={appPage}
           settingsSection={settingsSection}
           onSettingsSection={setSettingsSection}
-          onSelectChat={(id: string) => { 
-            setActiveChatId(id); 
-            setAppPage('chat'); 
-          }}
+          onSelectChat={(id) => { setActiveChatId(id); setAppPage('chat'); }}
           onOpenPlus={() => setAppPage('plus')}
           onOpenSettings={() => setAppPage('settings')}
           displayName={getDisplayName}
@@ -962,49 +935,54 @@ const App = (): JSX.Element => {
           avatarUrl={getAvatarUrl(me.user.id)}
           bannerUrl={getBannerUrl(me.user.id)}
           accentColor={theme.accentColor}
-          sidebarOpacity={theme.sidebarOpacity}
           contentBlur={theme.contentBlur}
           myPresence={presenceMap[me.user.id] ?? manualPresence}
           onPresenceChange={(status) => { setManualPresence(status); socketService.emit('presence:set', { status, manual: true }); }}
+          presenceMap={presenceMap}
         />
-
         <section className="h-[calc(100vh-2rem)]">
           <div key={appPage} className="h-full animate-pageIn">
             {appPage === 'chat' && (
               <ChatPage
+                token={token}
                 me={me.user}
                 users={me.users}
                 activeChat={activeChat}
                 getDisplayName={getDisplayName}
                 getAvatarUrl={getAvatarUrl}
-                onOpenFriendProfile={(id: string) => { 
-                  setFriendProfileId(id); 
-                  setAliasInput(aliases[id] || ''); 
-                  setIsEditingAlias(false); 
-                  setAppPage('friend-profile'); 
-                }}
-                onOpenGroupProfile={(id: string) => {
-                  setGroupProfileId(id);
-                  setNewGroupName(chats.find((c) => c.id === id)?.name || '');
-                  setIsEditingGroupName(false);
-                  setAppPage('group-profile');
-                }}
+                onOpenFriendProfile={(id) => { setFriendProfileId(id); setAliasInput(aliases[id] || ''); setIsEditingAlias(false); setAppPage('friend-profile'); }}
+                onOpenGroupProfile={(id) => { setGroupProfileId(id); setNewGroupName(chats.find(c => c.id === id)?.name || ''); setIsEditingGroupName(false); setAppPage('group-profile'); }}
                 onContextMenu={onMessageContextMenu}
                 replyToMessageId={replyToMessageId}
                 onClearReply={() => setReplyToMessageId('')}
                 messageText={messageText}
                 onMessageText={setMessageText}
                 onSend={sendMessage}
-                onPickFiles={(files) => void handlePickFiles(files)}
+                onPickFiles={(files) => {
+                  console.log('📎 onPickFiles called with:', files);
+                  if (files) {
+                    const newFiles = Array.from(files).map(file => ({
+                      id: crypto.randomUUID(),
+                      name: file.name,
+                      type: file.type || 'application/octet-stream',
+                      size: file.size,
+                      url: URL.createObjectURL(file),
+                      localFile: file,
+                    }));
+                    console.log('📎 New files created:', newFiles);
+                    setAttachedFiles(prev => [...prev, ...newFiles].slice(0, 5));
+                  }
+                }}
                 attachedFiles={attachedFiles}
-                onRemoveAttachedFile={(id: string) => setAttachedFiles((prev) => { 
-                  const removing = prev.find((item) => item.id === id); 
-                  if (removing?.localFile && removing.url.startsWith('blob:')) URL.revokeObjectURL(removing.url); 
-                  return prev.filter((item) => item.id !== id); 
+                onRemoveAttachedFile={(id) => setAttachedFiles(prev => {
+                  const removing = prev.find(item => item.id === id);
+                  if (removing?.localFile && removing.url.startsWith('blob:')) URL.revokeObjectURL(removing.url);
+                  return prev.filter(item => item.id !== id);
                 })}
                 theme={theme}
-                peerPresence={activeChat && !activeChat.isGroup ? (presenceMap[activeChat.memberIds.find((id) => id !== me.user.id) || ''] ?? 'offline') : 'offline'}
-                onStartCall={(type, peerId) => void startCall(type, peerId)}
+                peerPresence={peerPresenceValue}
+                peerLastSeen={peerLastSeen}
+                onStartCall={startCall}
                 isCallActive={isCallActive}
                 callType={callType}
                 participants={participants}
@@ -1012,94 +990,91 @@ const App = (): JSX.Element => {
                 onToggleMute={toggleMuteCall}
                 onToggleVideo={toggleVideoCall}
                 callExpanded={callExpanded}
-                onToggleCallExpand={() => setCallExpanded((v) => !v)}
+                onToggleCallExpand={() => setCallExpanded(v => !v)}
                 localStream={webrtcService.getLocalStream()}
                 remoteStreams={remoteStreams}
+                onToggleScreenShare={toggleScreenShare}
+                isScreenSharing={isScreenSharing}
               />
             )}
-
-            {appPage === 'plus' && (
-              <PlusPage 
-                onOpenAddFriend={() => setAppPage('add-friend')} 
-                onOpenCreateGroup={() => setAppPage('create-group')} 
-              />
-            )}
-
+            {appPage === 'plus' && <PlusPage onOpenAddFriend={() => setAppPage('add-friend')} onOpenCreateGroup={() => setAppPage('create-group')} />}
             {appPage === 'add-friend' && (
-              <AddFriendPage
-                friendEmail={friendEmail}
-                onFriendEmail={setFriendEmail}
-                onAddFriend={addFriend}
-                requests={friendRequests}
-                onAccept={(id: string) => void acceptFriendRequest(id)}
+              <AddFriendPage 
+                friendEmail={friendEmail} 
+                onFriendEmail={setFriendEmail} 
+                onAddFriend={addFriend} 
+                requests={me.incomingRequestIds.map(id => me.users.find(u => u.id === id)).filter(Boolean) as PublicUser[]} 
+                onAccept={(id) => acceptFriendRequest(id)} 
               />
             )}
-
             {appPage === 'create-group' && (
               <CreateGroupPage
                 groupName={groupName}
                 onGroupName={setGroupName}
-                friends={friends}
+                friends={me.friendIds.map(id => me.users.find(u => u.id === id)).filter(Boolean) as PublicUser[]}
                 selected={groupSelectedFriends}
-                onToggle={(id: string) => setGroupSelectedFriends((prev) => 
-                  prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]
-                )}
+                onToggle={(id) => setGroupSelectedFriends(prev => prev.includes(id) ? prev.filter(v => v !== id) : [...prev, id])}
                 onCreateGroup={createGroup}
               />
             )}
-
             {appPage === 'settings' && (
               <SettingsPage
                 me={me.user}
                 section={settingsSection}
                 onBack={() => setAppPage('chat')}
-                onLogout={() => void logout()}
+                onLogout={logout}
                 uiVersion={UI_VERSION}
-                onAvatarFile={(file) => void saveAppearanceFile('avatarUrl', file)}
-                onWallpaperFile={(file) => void saveAppearanceFile('wallpaperUrl', file)}
-                onBannerFile={(file) => void saveAppearanceFile('bannerUrl', file)}
+                onAvatarFile={(file) => saveAppearanceFile('avatarUrl', file)}
+                onWallpaperFile={(file) => saveAppearanceFile('wallpaperUrl', file)}
+                onBannerFile={(file) => saveAppearanceFile('bannerUrl', file)}
                 theme={theme}
                 onTheme={updateTheme}
                 onResetTheme={resetTheme}
+                avatarUrl={getAvatarUrl(me.user.id)}
+                bannerUrl={getBannerUrl(me.user.id)}
+                bio={userBio}
+                onUpdateBio={handleUpdateBio}
+                privacySettings={privacySettings}
+                onUpdatePrivacy={handleUpdatePrivacy}
               />
             )}
-
             {appPage === 'friend-profile' && (
               <FriendProfilePage
-                friend={friend}
+                friend={me.users.find(u => u.id === friendProfileId)}
                 alias={aliasInput}
                 isEditingAlias={isEditingAlias}
                 onAlias={setAliasInput}
-                onToggleEdit={() => setIsEditingAlias((prev) => !prev)}
-                onSaveAlias={() => {
-                  if (!friend) return;
-                  saveAlias(friend.id, aliasInput);
-                  setIsEditingAlias(false);
+                onToggleEdit={() => setIsEditingAlias(v => !v)}
+                onSaveAlias={() => { if (friendProfileId) saveAlias(friendProfileId, aliasInput); setIsEditingAlias(false); }}
+                onDeleteFriend={() => removeFriend(friendProfileId)}
+                onClearChat={() => {
+                  const directChat = chats.find(c => !c.isGroup && c.memberIds.includes(me.user.id) && c.memberIds.includes(friendProfileId));
+                  if (directChat) clearChat(directChat.id);
                 }}
-                onDeleteFriend={() => friend && void removeFriend(friend.id)}
-                onClearChat={() => friendDirectChat && void clearChat(friendDirectChat.id)}
-                chat={friendDirectChat}
-                avatarUrl={friend ? getAvatarUrl(friend.id) : undefined}
-                bannerUrl={friend ? getBannerUrl(friend.id) : undefined}
+                chat={chats.find(c => !c.isGroup && c.memberIds.includes(me.user.id) && c.memberIds.includes(friendProfileId))}
+                avatarUrl={getAvatarUrl(friendProfileId)}
+                bannerUrl={getBannerUrl(friendProfileId)}
+                presenceStatus={presenceMap[friendProfileId] || 'offline'}
+                lastSeen={me.users.find(u => u.id === friendProfileId)?.lastSeen}
+                bio={me.users.find(u => u.id === friendProfileId)?.bio}
               />
             )}
-
             {appPage === 'group-profile' && (
               <GroupProfilePage
                 group={activeGroup}
                 me={me.user}
                 members={groupMembers}
-                friends={friends}
+                friends={me.friendIds.map(id => me.users.find(u => u.id === id)).filter(Boolean) as PublicUser[]}
                 isEditingName={isEditingGroupName}
                 onNameChange={setNewGroupName}
-                onToggleEdit={() => setIsEditingGroupName(!isEditingGroupName)}
-                onSaveName={() => void updateGroupName(newGroupName)}
-                onLeaveGroup={() => void leaveGroup()}
-                onDeleteGroup={() => void deleteGroup()}
+                onToggleEdit={() => setIsEditingGroupName(v => !v)}
+                onSaveName={() => updateGroupName(newGroupName)}
+                onLeaveGroup={leaveGroup}
+                onDeleteGroup={deleteGroup}
                 onClearChat={() => activeGroup && clearChat(activeGroup.id)}
-                onAddMember={(userIds: string[]) => void addMembersToGroup(userIds)}
-                onRemoveMember={(id: string) => void removeMemberFromGroup(id)}
-                onViewMemberProfile={(id: string) => viewMemberProfile(id)}
+                onAddMember={addMembersToGroup}
+                onRemoveMember={removeMemberFromGroup}
+                onViewMemberProfile={viewMemberProfile}
                 isAdmin={activeGroup?.creatorId === me.user.id}
                 creatorId={activeGroup?.creatorId}
                 getAvatarUrl={getAvatarUrl}
@@ -1108,13 +1083,12 @@ const App = (): JSX.Element => {
           </div>
         </section>
       </div>
-
       <IncomingCallModal
         isOpen={Boolean(incomingCall)}
         callerName={incomingCall?.fromName ?? ''}
         callerAvatar={incomingCall?.fromAvatar}
         callType={incomingCall?.type ?? 'audio'}
-        onAccept={() => void acceptIncomingCall()}
+        onAccept={acceptIncomingCall}
         onReject={() => {
           if (incomingCall) {
             socketService.emit('call:reject', { from: incomingCall.from });
@@ -1123,28 +1097,11 @@ const App = (): JSX.Element => {
           }
         }}
       />
-
       {contextMenu && (
-        <div 
-          className="animate-scaleIn fixed z-50 min-w-44 rounded-xl border border-white/20 bg-slate-950/95 p-1 text-sm shadow-glass backdrop-blur-xl" 
-          style={{ left: contextMenu.x, top: contextMenu.y }} 
-          onClick={(event) => event.stopPropagation()}
-        >
-          <button 
-            className="block w-full rounded-lg px-3 py-2 text-left hover:bg-white/10" 
-            onClick={handleMenuReply} 
-            type="button"
-          >
-            Ответить
-          </button>
+        <div className="animate-scaleIn fixed z-50 min-w-44 rounded-xl border border-white/20 bg-slate-950/95 p-1 text-sm shadow-glass backdrop-blur-xl" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={(e) => e.stopPropagation()}>
+          <button className="block w-full rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={handleMenuReply}>Ответить</button>
           {contextMenu.mine && !contextMenu.deletedForEveryone && (
-            <button 
-              className="block w-full rounded-lg px-3 py-2 text-left text-rose-300 hover:bg-white/10" 
-              onClick={handleMenuDelete} 
-              type="button"
-            >
-              Удалить для всех
-            </button>
+            <button className="block w-full rounded-lg px-3 py-2 text-left text-rose-300 hover:bg-white/10" onClick={handleMenuDelete}>Удалить для всех</button>
           )}
         </div>
       )}
@@ -1152,8 +1109,12 @@ const App = (): JSX.Element => {
   );
 };
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { CallParticipant, CallType } from '../types';
 import { Avatar } from './Avatar';
-import { MdCallEnd, MdMic, MdMicOff, MdVideocam, MdVideocamOff, MdVolumeUp, MdExpandLess, MdExpandMore, MdCall } from 'react-icons/md';
+import { MdCallEnd, MdMic, MdMicOff, MdVideocam, MdVideocamOff, MdVolumeUp, MdExpandLess, MdExpandMore, MdCall, MdDesktopMac, MdStop } from 'react-icons/md';
 
 type Props = {
   isOpen: boolean;
@@ -16,147 +16,101 @@ type Props = {
   onToggleExpand?: () => void;
   localStream?: MediaStream | null;
   remoteStreams?: Map<string, MediaStream>;
+  onToggleScreenShare?: () => void;
+  isScreenSharing?: boolean;
 };
 
-const ParticipantTile = ({ participant, isLocal, stream, isVideoCall }: { participant: CallParticipant; isLocal: boolean; stream?: MediaStream; isVideoCall: boolean }): JSX.Element => {
+const ParticipantTile = ({ 
+  participant, 
+  isLocal, 
+  stream, 
+  isVideoCall, 
+  isSpeaking = false,
+  isScreenSharing = false
+}: { 
+  participant: CallParticipant; 
+  isLocal: boolean; 
+  stream?: MediaStream; 
+  isVideoCall: boolean;
+  isSpeaking?: boolean;
+  isScreenSharing?: boolean;
+}): JSX.Element => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
-  const [audioLevel, setAudioLevel] = React.useState(0);
-  const [hasAudio, setHasAudio] = React.useState(false);
   const [hasVideo, setHasVideo] = React.useState(false);
-  const [isPlaying, setIsPlaying] = React.useState(false);
-  const [videoError, setVideoError] = React.useState<string | null>(null);
+  const [isAudioPlaying, setIsAudioPlaying] = React.useState(false);
+  const audioRef = React.useRef<HTMLAudioElement>(null);
 
-  // Принудительное воспроизведение звука
-  const forcePlayAudio = React.useCallback(async () => {
-    if (!stream || isLocal) return;
-    
-    try {
-      const audioElement = document.createElement('audio');
-      audioElement.srcObject = stream;
-      audioElement.muted = false;
-      audioElement.style.display = 'none';
-      audioElement.setAttribute('autoplay', '');
-      
-      document.body.appendChild(audioElement);
-      
-      await audioElement.play();
-      console.log(`✅ Audio playing for ${participant.name}`);
-      setIsPlaying(true);
-      
-      return () => {
-        audioElement.pause();
-        audioElement.srcObject = null;
-        document.body.removeChild(audioElement);
-      };
-    } catch (error) {
-      console.log(`❌ Audio play error for ${participant.name}:`, error);
-      
-      const handleUserInteraction = () => {
-        forcePlayAudio();
-        document.removeEventListener('click', handleUserInteraction);
-        document.removeEventListener('touchstart', handleUserInteraction);
-      };
-      
-      document.addEventListener('click', handleUserInteraction);
-      document.addEventListener('touchstart', handleUserInteraction);
+  const enableAudio = React.useCallback(() => {
+    if (audioRef.current && stream && !isLocal) {
+      audioRef.current.srcObject = stream;
+      audioRef.current.play().then(() => {
+        console.log(`✅ Audio enabled for ${participant.name}`);
+        setIsAudioPlaying(true);
+      }).catch(e => console.log('Audio play failed:', e));
     }
   }, [stream, isLocal, participant.name]);
 
   React.useEffect(() => {
-    if (!stream) {
-      console.log(`📹 No stream for ${participant.name}${isLocal ? ' (local)' : ''}`);
-      return;
-    }
+    if (!stream) return;
     
-    const audioTracks = stream.getAudioTracks();
     const videoTracks = stream.getVideoTracks();
-    
-    console.log(`📹 Stream for ${participant.name}${isLocal ? ' (local)' : ''}:`, {
-      audioTracks: audioTracks.length,
-      videoTracks: videoTracks.length,
-      active: stream.active,
-      id: stream.id,
-      videoEnabled: participant.isVideoEnabled
-    });
-    
-    setHasAudio(audioTracks.length > 0);
     setHasVideo(videoTracks.length > 0);
     
-    // Для удаленного потока - автоматически форсируем звук
-    if (!isLocal && audioTracks.length > 0) {
-      forcePlayAudio();
+    // Для удаленного потока – создаем аудио элемент для воспроизведения звука
+    if (!isLocal && !audioRef.current) {
+      const audio = new Audio();
+      audio.autoplay = false;
+      audioRef.current = audio;
+      
+      // Добавляем обработчик для первого клика пользователя
+      const handleFirstInteraction = () => {
+        enableAudio();
+        document.removeEventListener('click', handleFirstInteraction);
+        document.removeEventListener('touchstart', handleFirstInteraction);
+      };
+      document.addEventListener('click', handleFirstInteraction);
+      document.addEventListener('touchstart', handleFirstInteraction);
     }
     
-    // ВСЕГДА устанавливаем видео поток, если есть видеодорожки
+    // Настройка видео
     if (videoRef.current && videoTracks.length > 0) {
       videoRef.current.srcObject = stream;
       videoRef.current.muted = isLocal;
       videoRef.current.playsInline = true;
-      
-      // Пытаемся воспроизвести видео
-      videoRef.current.play()
-        .then(() => {
-          console.log(`✅ Video playing for ${participant.name}${isLocal ? ' (local)' : ''}`);
-          setVideoError(null);
-        })
-        .catch(e => {
-          console.log(`❌ Video play error for ${participant.name}:`, e);
-          setVideoError(e.message);
-        });
-    } else if (videoRef.current) {
-      // Если нет видео, очищаем srcObject
-      videoRef.current.srcObject = null;
+      videoRef.current.play().catch(e => console.log('Video play error:', e));
     }
     
-  }, [stream, participant.name, isLocal, forcePlayAudio, participant.isVideoEnabled]);
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.srcObject = null;
+      }
+    };
+  }, [stream, isLocal, enableAudio, participant.name]);
 
-  // Анализ уровня звука
-  React.useEffect(() => {
-    if (!stream || isLocal) return;
-    
-    const audioTrack = stream.getAudioTracks()[0];
-    if (!audioTrack) return;
-
-    try {
-      const audioContext = new AudioContext();
-      const source = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
-
-      let raf = 0;
-      const loop = (): void => {
-        analyser.getByteFrequencyData(data);
-        const avg = data.reduce((acc, v) => acc + v, 0) / data.length / 255;
-        setAudioLevel(avg);
-        raf = requestAnimationFrame(loop);
-      };
-      loop();
-
-      return () => {
-        cancelAnimationFrame(raf);
-        void audioContext.close();
-      };
-    } catch (error) {
-      console.error('Audio analysis error:', error);
-    }
-  }, [stream, isLocal]);
-
-  // Определяем, показывать ли видео
-  const shouldShowVideo = isVideoCall && participant.isVideoEnabled && hasVideo;
-  const isSpeaking = audioLevel > 0.06;
-
+  const shouldShowVideo = (isVideoCall || isScreenSharing) && participant.isVideoEnabled && hasVideo;
+  
   return (
-    <div className={`relative aspect-video overflow-hidden rounded-xl border-2 ${isSpeaking && !participant.isMuted ? 'border-green-400' : 'border-transparent'} bg-slate-900/50`}>
-      {/* Видео элемент - показываем если есть видео и оно включено */}
+    <div className={`relative aspect-video overflow-hidden rounded-xl border-2 transition-all duration-200 ${isSpeaking && !participant.isMuted ? 'border-green-400 shadow-lg shadow-green-400/20' : 'border-transparent'} bg-slate-900/50`}>
+      {/* Кнопка включения звука для удаленных участников */}
+      {!isLocal && !isAudioPlaying && (
+        <button
+          onClick={enableAudio}
+          className="absolute top-2 right-2 z-10 rounded-full bg-yellow-500/80 p-2 text-white text-xs animate-pulse"
+          type="button"
+        >
+          🔊 Включить звук
+        </button>
+      )}
+      
+      {/* Видео или аватар */}
       {shouldShowVideo ? (
         <video 
           ref={videoRef} 
           autoPlay 
           playsInline 
           muted={isLocal}
-          className={`h-full w-full object-cover ${isLocal ? 'scale-x-[-1]' : ''}`}
+          className={`h-full w-full object-cover ${isLocal && !isScreenSharing ? 'scale-x-[-1]' : ''}`}
         />
       ) : (
         <div className="grid h-full w-full place-items-center bg-gradient-to-br from-indigo-900/60 to-cyan-900/60">
@@ -164,25 +118,22 @@ const ParticipantTile = ({ participant, isLocal, stream, isVideoCall }: { partic
         </div>
       )}
       
-      {/* Индикатор уровня звука */}
-      {!participant.isMuted && isSpeaking && (
-        <div className="absolute bottom-0 left-0 h-1 bg-green-400" style={{ width: `${Math.min(100, audioLevel * 160)}%` }} />
+      {/* Индикатор речи */}
+      {isSpeaking && !participant.isMuted && (
+        <div className="absolute bottom-0 left-0 h-1 bg-green-400 animate-pulse" style={{ width: '100%' }} />
       )}
 
-      {/* Информация о пользователе */}
+      {/* Информация о участнике */}
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
         <div className="flex items-center justify-between text-xs">
           <span className="flex items-center gap-1 truncate max-w-[70%]">
             {participant.name}{isLocal ? ' (Вы)' : ''}
-            {videoError && <span className="text-red-400" title={videoError}>⚠️</span>}
+            {isScreenSharing && <MdDesktopMac size={14} className="text-cyan-400" />}
           </span>
           <div className="flex gap-1">
             {participant.isMuted && <MdMicOff className="text-red-400" size={14} />}
-            {isSpeaking && !participant.isMuted && <MdVolumeUp className="text-green-300" size={14} />}
-            {isVideoCall && !participant.isVideoEnabled && <span className="text-white/50 text-[10px]">📹 off</span>}
-            {!isPlaying && !isLocal && hasAudio && (
-              <span className="text-yellow-400 text-[10px] animate-pulse">🔊</span>
-            )}
+            {isVideoCall && !participant.isVideoEnabled && !isScreenSharing && <span className="text-white/50 text-[10px]">📹 off</span>}
+            {isScreenSharing && <span className="text-cyan-400 text-[10px]">🎥 экран</span>}
           </div>
         </div>
       </div>
@@ -203,18 +154,56 @@ export const CallOverlay = ({
   onToggleExpand,
   localStream,
   remoteStreams = new Map(),
+  onToggleScreenShare,
+  isScreenSharing = false,
 }: Props): JSX.Element | null => {
   if (!isOpen) return null;
 
   const localParticipant = participants.find((p) => p.userId === localParticipantId);
   const remoteParticipants = participants.filter((p) => p.userId !== localParticipantId);
+  
+  // Анализ уровня звука для локального участника
+  const [localAudioLevel, setLocalAudioLevel] = React.useState(0);
+  
+  React.useEffect(() => {
+    if (!localStream) return;
+    
+    const audioTrack = localStream.getAudioTracks()[0];
+    if (!audioTrack) return;
 
-  console.log('🎧 CallOverlay participants:', participants);
-  console.log('🎧 Local stream:', localStream?.active ? 'active' : 'inactive');
-  console.log('🎧 Remote streams:', remoteStreams.size);
-  console.log('🎧 Call type:', callType);
+    try {
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(localStream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
 
-  // Определяем количество колонок для сетки
+      let raf = 0;
+      const loop = (): void => {
+        analyser.getByteFrequencyData(data);
+        const avg = data.reduce((acc, v) => acc + v, 0) / data.length / 255;
+        setLocalAudioLevel(avg);
+        raf = requestAnimationFrame(loop);
+      };
+      loop();
+
+      return () => {
+        cancelAnimationFrame(raf);
+        void audioContext.close();
+      };
+    } catch (error) {
+      console.error('Audio analysis error:', error);
+    }
+  }, [localStream]);
+
+  const isLocalSpeaking = localAudioLevel > 0.06 && !localParticipant?.isMuted;
+  
+  const updatedLocalParticipant = localParticipant ? {
+    ...localParticipant,
+    isSpeaking: isLocalSpeaking
+  } : null;
+
   const totalParticipants = participants.length;
   let gridCols = 'grid-cols-1';
   
@@ -227,85 +216,107 @@ export const CallOverlay = ({
   }
 
   return (
-    <div className="w-full rounded-xl border border-white/20  animate-slideDown p-4 " style={{ backgroundColor: 'rgba(71,85,105,0.15)' }}>
-      {/* Заголовок */}
-      <div className="flex items-center justify-between rounded-full border border-white/10 bg-tr/5 px-4 py-2">
-        <span className="flex items-center gap-1">
-          {callType === 'video' ? <MdVideocam size={16} /> : <MdCall size={16} />}
-          <span>{callType === 'video' ? 'Видеозвонок' : 'Аудиозвонок'}</span>
-        </span>
-        <div className="flex gap-2">
-          {onToggleExpand && (
-            <button onClick={onToggleExpand} className="rounded-full p-1.5 hover:bg-white/10 transition" type="button">
-              {isExpanded ? <MdExpandLess size={18} /> : <MdExpandMore size={18} />}
+    <div className="w-full h-full rounded-2xl overflow-hidden">
+      <div className="flex flex-col h-full" style={{ backgroundColor: 'rgba(71,85,105,0.15)' }}>
+        {/* Заголовок */}
+        <div className="flex items-center justify-between rounded-full m-3 bg-white/5 px-4 py-2">
+          <span className="flex items-center gap-1 text-white">
+            {isScreenSharing ? <MdDesktopMac size={16} className="text-cyan-400" /> : callType === 'video' ? <MdVideocam size={16} /> : <MdCall size={16} />}
+            <span className="text-sm">
+              {isScreenSharing ? 'Демонстрация экрана' : callType === 'video' ? 'Видеозвонок' : 'Аудиозвонок'}
+            </span>
+          </span>
+          <div className="flex gap-2">
+            {onToggleScreenShare && (
+              <button 
+                onClick={onToggleScreenShare} 
+                className={`rounded-full p-1.5 transition ${isScreenSharing ? 'bg-red-500/20 text-red-400' : 'hover:bg-white/10'}`}
+                type="button"
+                title={isScreenSharing ? 'Остановить демонстрацию' : 'Демонстрация экрана'}
+              >
+                {isScreenSharing ? <MdStop size={18} /> : <MdDesktopMac size={18} />}
+              </button>
+            )}
+            {onToggleExpand && (
+              <button onClick={onToggleExpand} className="rounded-full p-1.5 hover:bg-white/10 transition" type="button">
+                {isExpanded ? <MdExpandLess size={18} /> : <MdExpandMore size={18} />}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Сетка участников */}
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className={`grid ${gridCols} gap-4 w-full max-w-6xl mx-auto`}>
+            {/* Локальный участник */}
+            {updatedLocalParticipant && (
+              <ParticipantTile
+                participant={updatedLocalParticipant}
+                isLocal
+                stream={localStream ?? undefined}
+                isVideoCall={callType === 'video' || isScreenSharing}
+                isSpeaking={isLocalSpeaking}
+                isScreenSharing={isScreenSharing}
+              />
+            )}
+            
+            {/* Удаленные участники */}
+            {remoteParticipants.map((p) => (
+              <ParticipantTile 
+                key={p.userId} 
+                participant={p} 
+                isLocal={false} 
+                stream={remoteStreams.get(p.userId)} 
+                isVideoCall={callType === 'video'}
+                isSpeaking={p.isSpeaking}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Элементы управления */}
+        <div className="flex items-center justify-center gap-3 m-3 rounded-full border border-white/20 p-3 shadow-glass bg-black/20 backdrop-blur-sm">
+          <button 
+            onClick={onToggleMute} 
+            className={`rounded-full p-3 transition-all hover:scale-110 ${localParticipant?.isMuted ? 'bg-red-500/20 text-red-400' : 'bg-white/10 hover:bg-white/20'}`} 
+            type="button"
+            title={localParticipant?.isMuted ? 'Включить микрофон' : 'Отключить микрофон'}
+          >
+            {localParticipant?.isMuted ? <MdMicOff size={20} /> : <MdMic size={20} />}
+          </button>
+          
+          {callType === 'video' && (
+            <button 
+              onClick={onToggleVideo} 
+              className={`rounded-full p-3 transition-all hover:scale-110 ${!localParticipant?.isVideoEnabled && !isScreenSharing ? 'bg-red-500/20 text-red-400' : 'bg-white/10 hover:bg-white/20'}`} 
+              type="button"
+              title={localParticipant?.isVideoEnabled && !isScreenSharing ? 'Отключить камеру' : 'Включить камеру'}
+            >
+              {(localParticipant?.isVideoEnabled && !isScreenSharing) || isScreenSharing ? <MdVideocam size={20} /> : <MdVideocamOff size={20} />}
             </button>
           )}
-
-        </div>
-      </div>
-
-      {/* Сетка участников - центрированная */}
-      <div className="p-4 flex justify-center">
-        <div className={`grid ${gridCols} gap-4 w-full max-w-6xl`}>
-          {/* Локальный участник */}
-          {localParticipant ? (
-            <ParticipantTile
-              participant={localParticipant}
-              isLocal
-              stream={localStream ?? undefined}
-              isVideoCall={callType === 'video'}
-            />
-          ) : (
-            <div className="relative aspect-video overflow-hidden rounded-xl border-2 border-dashed border-white/20 bg-slate-900/50">
-              <div className="grid h-full w-full place-items-center bg-gradient-to-br from-slate-800/80 to-slate-900/80 px-4 text-center text-sm text-white/70">
-                Подключаем участника звонка…
-              </div>
-            </div>
+          
+          {/* Кнопка демонстрации экрана - доступна для аудио и видео звонков */}
+          {onToggleScreenShare && (
+            <button 
+              onClick={onToggleScreenShare} 
+              className={`rounded-full p-3 transition-all hover:scale-110 ${isScreenSharing ? 'bg-red-500/20 text-red-400' : 'bg-white/10 hover:bg-white/20'}`} 
+              type="button"
+              title={isScreenSharing ? 'Остановить демонстрацию экрана' : 'Демонстрация экрана'}
+            >
+              {isScreenSharing ? <MdStop size={20} /> : <MdDesktopMac size={20} />}
+            </button>
           )}
           
-          {/* Удаленные участники */}
-          {remoteParticipants.map((p) => (
-            <ParticipantTile 
-              key={p.userId} 
-              participant={p} 
-              isLocal={false} 
-              stream={remoteStreams.get(p.userId)} 
-              isVideoCall={callType === 'video'} 
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Элементы управления */}
-      <div className="flex items-center justify-center rounded-full ml-3 mr-3 mb-3 gap-3 border border-white/20 p-4 shadow-glass">
-        <button 
-          onClick={onToggleMute} 
-          className={`rounded-full p-3 transition-all ${localParticipant?.isMuted ? 'bg-red-500/20 text-red-400' : 'bg-white/10 hover:bg-white/20'}`} 
-          type="button"
-          title={localParticipant?.isMuted ? 'Включить микрофон' : 'Отключить микрофон'}
-        >
-          {localParticipant?.isMuted ? <MdMicOff size={20} /> : <MdMic size={20} />}
-        </button>
-        
-        {callType === 'video' && (
           <button 
-            onClick={onToggleVideo} 
-            className={`rounded-full p-3 transition-all ${!localParticipant?.isVideoEnabled ? 'bg-red-500/20 text-red-400' : 'bg-white/10 hover:bg-white/20'}`} 
+            onClick={onEndCall} 
+            className="rounded-full bg-red-500 p-3 text-white transition-all hover:bg-red-600 hover:scale-110" 
             type="button"
-            title={localParticipant?.isVideoEnabled ? 'Отключить камеру' : 'Включить камеру'}
+            title="Завершить звонок"
           >
-            {localParticipant?.isVideoEnabled ? <MdVideocam size={20} /> : <MdVideocamOff size={20} />}
+            <MdCallEnd size={20} />
           </button>
-        )}
-        
-        <button 
-          onClick={onEndCall} 
-          className="rounded-full bg-red-500 p-3 text-white transition-all hover:bg-red-600 hover:scale-110" 
-          type="button"
-          title="Завершить звонок"
-        >
-          <MdCallEnd size={20} />
-        </button>
+        </div>
       </div>
     </div>
   );
