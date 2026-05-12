@@ -49,9 +49,10 @@ type Props = {
 
 const formatTime = (value: number): string => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const statusLabel: Record<PresenceStatus, string> = { online: 'в сети', offline: 'не в сети', dnd: 'не беспокоить' };
+const FILE_BASE_URL = `${window.location.protocol}//${window.location.hostname}:4000`;
 
 const downloadFile = (url: string, filename: string) => {
-  const fullUrl = url.startsWith('http') ? url : `http://192.168.1.104:4000${url}`;
+  const fullUrl = url.startsWith('http') ? url : `${FILE_BASE_URL}${url}`;
   const link = document.createElement('a');
   link.href = fullUrl;
   link.download = filename;
@@ -64,7 +65,7 @@ const downloadFile = (url: string, filename: string) => {
 const FullscreenViewer = ({ attachment, onClose, accentColor }: { attachment: MessageAttachment; onClose: () => void; accentColor: string }) => {
   const [isPlaying, setIsPlaying] = React.useState(false);
   const audioRef = React.useRef<HTMLAudioElement>(null);
-  const fileUrl = attachment.url.startsWith('http') ? attachment.url : `http://192.168.1.104:4000${attachment.url}`;
+  const fileUrl = attachment.url.startsWith('http') ? attachment.url : `${FILE_BASE_URL}${attachment.url}`;
   const isImage = attachment.type?.startsWith('image/') || false;
   const isVideo = attachment.type?.startsWith('video/') || false;
   const isAudio = attachment.type?.startsWith('audio/') || false;
@@ -160,7 +161,7 @@ const FullscreenViewer = ({ attachment, onClose, accentColor }: { attachment: Me
 
 const MessageAttachmentPreview = ({ attachment, theme }: { attachment: MessageAttachment; theme: ThemeSettings }) => {
   const [showFullscreen, setShowFullscreen] = React.useState(false);
-  const fileUrl = attachment.url.startsWith('http') ? attachment.url : `http://192.168.1.104:4000${attachment.url}`;
+  const fileUrl = attachment.url.startsWith('http') ? attachment.url : `${FILE_BASE_URL}${attachment.url}`;
   const isImage = attachment.type?.startsWith('image/') || false;
   const isVideo = attachment.type?.startsWith('video/') || false;
   const isAudio = attachment.type?.startsWith('audio/') || false;
@@ -275,6 +276,7 @@ export const ChatPage = (props: Props): JSX.Element => {
     replyToMessageId, onClearReply, messageText, onMessageText, onSend, onPickFiles, attachedFiles, onRemoveAttachedFile,
     theme, peerPresence = 'offline', peerLastSeen, onStartCall, isCallActive, callType, participants, onEndCall, onToggleMute, onToggleVideo,
     callExpanded, onToggleCallExpand, localStream, remoteStreams, token,
+    refreshData,
     onToggleScreenShare,
     isScreenSharing = false,
   } = props;
@@ -378,7 +380,9 @@ export const ChatPage = (props: Props): JSX.Element => {
       onClearReply();
       
       // Обновляем данные
-      await refreshData();
+      if (refreshData) {
+        await refreshData();
+      }
       
     } catch (error) { 
       console.error('Send message error:', error); 
@@ -499,10 +503,14 @@ export const ChatPage = (props: Props): JSX.Element => {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
+      <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4 scroll-smooth">
         {activeChat?.messages.map((message) => {
           const mine = message.senderId === me.id;
           const sender = users.find((u) => u.id === message.senderId);
+          const repliedMessage = message.replyToMessageId
+            ? activeChat.messages.find((m) => m.id === message.replyToMessageId)
+            : undefined;
+          const repliedSender = repliedMessage ? users.find((u) => u.id === repliedMessage.senderId) : undefined;
           return (
             <div key={message.id} className={`flex gap-3 ${mine ? 'justify-end' : 'justify-start'}`}>
               {!mine && (
@@ -516,7 +524,7 @@ export const ChatPage = (props: Props): JSX.Element => {
               )}
               <div
                 onContextMenu={(event) => onContextMenu(event, activeChat.id, message, mine)}
-                className={`group relative max-w-[70%] rounded-2xl px-4 py-2.5 shadow-lg transition-all hover:shadow-xl animate-msgIn ${mine ? 'rounded-br-md' : 'rounded-bl-md'}`}
+                className={`group relative max-w-[85%] md:max-w-[70%] rounded-2xl px-3 md:px-4 py-2.5 shadow-lg transition-all hover:shadow-xl animate-msgIn ${mine ? 'rounded-br-md' : 'rounded-bl-md'}`}
                 style={{ 
                   backgroundColor: mine ? `${theme.accentColor}CC` : 'rgba(255,255,255,0.1)', 
                   borderRadius: `${theme.bubbleRadius}px` 
@@ -527,6 +535,16 @@ export const ChatPage = (props: Props): JSX.Element => {
                   {!mine && <span className="font-semibold text-white/90">{sender ? getDisplayName(sender) : 'Unknown'}</span>}
                   <span className="text-xs text-white/40">{formatTime(message.createdAt)}</span>
                 </div>
+                {repliedMessage && (
+                  <div className="mb-2 rounded-lg border-l-2 border-white/50 bg-black/20 px-2.5 py-1.5 text-xs text-white/85">
+                    <div className="font-semibold text-white/90">
+                      {repliedMessage.senderId === me.id ? 'Вы' : (repliedSender ? getDisplayName(repliedSender) : 'Unknown')}
+                    </div>
+                    <div className="truncate text-white/70">
+                      {repliedMessage.text?.trim() || (repliedMessage.attachments?.length ? '📎 Вложение' : 'Сообщение')}
+                    </div>
+                  </div>
+                )}
                 {message.text && (
                   <p className="text-white text-sm leading-relaxed whitespace-pre-wrap break-words">
                     {message.text}
@@ -562,7 +580,7 @@ export const ChatPage = (props: Props): JSX.Element => {
       )}
 
       {/* Input Area */}
-      <div className="p-4">
+      <div className="p-3 md:p-4">
         <div className={`relative flex flex-col rounded-full bg-white/5 border border-white/10 transition-all ${sendPulse ? 'scale-[1.01] border-cyan-400/50 shadow-lg shadow-cyan-400/20' : ''}`}>
           {flyingText && (
             <div 
@@ -573,7 +591,7 @@ export const ChatPage = (props: Props): JSX.Element => {
             </div>
           )}
           
-          <form className="flex items-end gap-2 p-2" onSubmit={submitWithFx}>
+          <form className="flex items-end gap-1.5 md:gap-2 p-2" onSubmit={submitWithFx}>
             <AutoSizeTextarea 
               value={messageText} 
               onChange={(e) => onMessageText(e.target.value)} 
@@ -583,13 +601,13 @@ export const ChatPage = (props: Props): JSX.Element => {
             />
             
             <div className="flex gap-1">
-              <label className="cursor-pointer rounded-full p-2.5 text-white/60 transition hover:bg-white/10 hover:text-white">
+              <label className="cursor-pointer rounded-full p-2 md:p-2.5 text-white/60 transition hover:bg-white/10 hover:text-white">
                 <FiPaperclip size={18} />
                 <input ref={fileInputRef} className="hidden" type="file" multiple onChange={handleFileSelect} />
               </label>
               
               <button 
-                className="rounded-full p-2.5 text-white transition hover:scale-105 hover:shadow-lg disabled:opacity-50 disabled:hover:scale-100" 
+                className="rounded-full p-2 md:p-2.5 text-white transition hover:scale-105 hover:shadow-lg disabled:opacity-50 disabled:hover:scale-100" 
                 style={{ background: `linear-gradient(135deg, ${theme.accentColor}, ${theme.accentColor}dd)` }} 
                 type="submit" 
                 disabled={isUploading}
@@ -605,7 +623,7 @@ export const ChatPage = (props: Props): JSX.Element => {
           
           {/* Attached Files Preview */}
           {attachedFiles && attachedFiles.length > 0 && (
-            <div className="grid grid-cols-2 gap-2 p-2 pt-0 border-t border-white/10 mt-1 animate-fadeIn">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 pt-0 border-t border-white/10 mt-1 animate-fadeIn">
               {attachedFiles.map((f) => (
                 <div key={f.id} className="flex items-center justify-between rounded-lg bg-white/5 p-2 text-xs group hover:bg-white/10 transition">
                   <div className="flex items-center gap-2 flex-1 min-w-0">

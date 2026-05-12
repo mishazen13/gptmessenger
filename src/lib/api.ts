@@ -2,7 +2,8 @@
 
 import { MessageAttachment } from '../types';
 
-const API_BASE_URL = 'http://192.168.1.104:4000';
+const API_BASE_URL =
+  (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:4000` : 'http://localhost:4000');
 
 
 export const api = async <T,>(url: string, options: RequestInit = {}, token?: string): Promise<T> => {
@@ -56,7 +57,7 @@ export const uploadFileChunked = async (file: File, token: string): Promise<Mess
     const chunk = file.slice(offset, offset + CHUNK_SIZE);
     const chunkBuffer = await chunk.arrayBuffer();
     
-    await fetch(`${API_BASE_URL}/api/uploads/chunk/${started.uploadId}`, {
+    const chunkResponse = await fetch(`${API_BASE_URL}/api/uploads/chunk/${started.uploadId}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/octet-stream',
@@ -64,6 +65,10 @@ export const uploadFileChunked = async (file: File, token: string): Promise<Mess
       },
       body: chunkBuffer,
     });
+    if (!chunkResponse.ok) {
+      const payload = (await chunkResponse.json().catch(() => ({}))) as { error?: string };
+      throw new Error(payload.error ?? `Chunk upload failed: ${chunkResponse.status}`);
+    }
     
     offset += chunk.size;
   }
