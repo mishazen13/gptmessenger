@@ -716,10 +716,14 @@ export const ChatPage = (props: Props): JSX.Element => {
             />
             
             <div className="flex gap-1">
-              <label className="cursor-pointer rounded-full p-2 md:p-2.5 text-white/60 transition hover:bg-white/10 hover:text-white">
+              <button
+                type="button"
+                className="rounded-full p-2 md:p-2.5 text-white/60 transition hover:bg-white/10 hover:text-white"
+                onClick={() => fileInputRef.current?.click()}
+              >
                 <FiPaperclip size={18} />
-                <input ref={fileInputRef} className="hidden" type="file" multiple onChange={handleFileSelect} />
-              </label>
+              </button>
+              <input ref={fileInputRef} className="hidden" type="file" multiple onChange={handleFileSelect} />
               
               <button 
                 className="rounded-full p-2 md:p-2.5 text-white transition hover:scale-105 hover:shadow-lg disabled:opacity-50 disabled:hover:scale-100" 
