@@ -16,6 +16,7 @@ type Props = {
   activeChat?: Chat;
   getDisplayName: (user: PublicUser) => string;
   getAvatarUrl: (userId: string) => string | undefined;
+  getBannerUrl: (userId: string) => string | undefined;
   onContextMenu: (event: React.MouseEvent<HTMLElement>, chatId: string, message: Message, mine: boolean) => void;
   replyToMessageId: string;
   onClearReply: () => void;
@@ -44,7 +45,7 @@ type Props = {
   token: string;
   onToggleScreenShare?: () => void;
   isScreenSharing?: boolean;
-  refreshData?: (silent?: boolean) => Promise<void>; // <-- ДОБАВЬТЕ ЭТУ СТРОКУ
+  refreshData?: (silent?: boolean) => Promise<void>;
 };
 
 const formatTime = (value: number): string => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -107,7 +108,7 @@ const FullscreenViewer = ({ attachment, onClose, accentColor }: { attachment: Me
               className="rounded-lg px-4 py-2 text-sm text-white transition flex items-center gap-2 hover:opacity-90" 
               style={{ backgroundColor: accentColor }}
             >
-              <FiDownload size={16} /> Скачать
+              <FiDownload size={16} className="text-white" /> Скачать
             </button>
             <button onClick={onClose} className="rounded-lg bg-red-500/20 p-2 text-white transition hover:bg-red-500/30">
               <MdClose size={20} />
@@ -181,28 +182,26 @@ const MessageAttachmentPreview = ({ attachment, theme }: { attachment: MessageAt
   if (isImage) {
     return (
       <>
-        <div className="relative mt-2 cursor-pointer group overflow-hidden rounded-xl" onClick={() => setShowFullscreen(true)}>
+        <div className="relative cursor-pointer group overflow-hidden" onClick={() => setShowFullscreen(true)}>
           <img
             src={fileUrl}
             alt={attachment.name}
-            className="max-h-56 max-w-xs rounded-xl object-cover transition duration-300 group-hover:scale-105"
+            className="w-full max-h-[300px] object-cover transition duration-300 group-hover:scale-105"
           />
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition group-hover:opacity-100 rounded-xl">
-            <div className="flex gap-3">
-              <button 
-                onClick={handleDownload} 
-                className="rounded-full p-2.5 text-white transition hover:scale-110 shadow-lg" 
-                style={{ backgroundColor: theme.accentColor }}
-              >
-                <FiDownload size={18} />
-              </button>
-              <button 
-                onClick={() => setShowFullscreen(true)} 
-                className="rounded-full bg-white/20 p-2.5 text-white transition hover:bg-white/30 hover:scale-110 shadow-lg backdrop-blur"
-              >
-                <FiMaximize2 size={18} />
-              </button>
-            </div>
+          <div className="absolute inset-0 flex items-center justify-center gap-3 opacity-0 transition group-hover:opacity-100 bg-gradient-to-t from-black/70 via-black/30 to-transparent rounded-xl">
+            <button 
+              onClick={handleDownload} 
+              className="rounded-full p-2.5 transition hover:scale-110 shadow-xl backdrop-blur-md"
+              style={{ backgroundColor: `${theme.accentColor}dd` }}
+            >
+              <FiDownload size={18} className="text-white drop-shadow-md" />
+            </button>
+            <button 
+              onClick={() => setShowFullscreen(true)} 
+              className="rounded-full p-2.5 transition hover:scale-110 shadow-xl backdrop-blur-md bg-black/20 border border-white/30"
+            >
+              <FiMaximize2 size={18} className="text-white drop-shadow-md" />
+            </button>
           </div>
         </div>
         {showFullscreen && <FullscreenViewer attachment={attachment} onClose={() => setShowFullscreen(false)} accentColor={theme.accentColor} />}
@@ -213,17 +212,17 @@ const MessageAttachmentPreview = ({ attachment, theme }: { attachment: MessageAt
   if (isVideo) {
     return (
       <>
-        <div className="relative mt-2 cursor-pointer group overflow-hidden rounded-xl" onClick={() => setShowFullscreen(true)}>
-          <video src={fileUrl} className="max-h-56 max-w-xs rounded-xl object-cover" preload="metadata" />
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50 transition group-hover:bg-black/60 rounded-xl">
-            <div className="rounded-full p-4 shadow-xl transition group-hover:scale-110" style={{ backgroundColor: theme.accentColor }}>
+        <div className="relative cursor-pointer group overflow-hidden" onClick={() => setShowFullscreen(true)}>
+          <video src={fileUrl} className="w-full max-h-[300px] object-cover" preload="metadata" />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 transition group-hover:bg-black/60">
+            <div className="rounded-full bg-white/20 p-3 transition hover:bg-white/30 hover:scale-110 shadow-lg backdrop-blur">
               <FiPlay size={28} className="text-white ml-0.5" />
             </div>
           </div>
           <div className="absolute top-2 right-2 opacity-0 transition group-hover:opacity-100">
             <button 
               onClick={handleDownload} 
-              className="rounded-full bg-black/60 p-2 text-white transition hover:opacity-90 backdrop-blur" 
+              className="rounded-full p-2 text-white transition hover:opacity-90 shadow-lg border border-white/30" 
               style={{ backgroundColor: theme.accentColor }}
             >
               <FiDownload size={14} />
@@ -245,7 +244,7 @@ const MessageAttachmentPreview = ({ attachment, theme }: { attachment: MessageAt
           <p className="truncate text-sm font-medium text-white">{attachment.name}</p>
           <p className="text-[11px] text-white/40">Аудио файл</p>
         </div>
-        <button onClick={handleDownload} className="rounded-full bg-white/10 p-2 text-white/70 transition hover:bg-white/20 hover:text-white">
+        <button onClick={handleDownload} className="rounded-full bg-white/20 p-2 text-white transition hover:bg-white/30 hover:scale-105">
           <FiDownload size={16} />
         </button>
       </div>
@@ -261,18 +260,135 @@ const MessageAttachmentPreview = ({ attachment, theme }: { attachment: MessageAt
       </div>
       <button 
         onClick={handleDownload} 
-        className="rounded-full p-2 transition hover:text-white opacity-0 group-hover:opacity-100" 
-        style={{ backgroundColor: `${theme.accentColor}20`, color: theme.accentColor }}
+        className="rounded-full p-2 transition-all hover:scale-110 opacity-0 group-hover:opacity-100 shadow-lg" 
+        style={{ backgroundColor: `${theme.accentColor}dd` }}
       >
-        <FiDownload size={16} />
+        <FiDownload size={16} className="text-white" />
       </button>
     </div>
   );
 };
 
+// Компонент сообщения с умным расположением времени
+const MessageBubble = ({ message, mine, sender, repliedMessage, repliedSender, theme, formatTime, getDisplayName, me }: any) => {
+  const textRef = React.useRef<HTMLParagraphElement>(null);
+  const [timePosition, setTimePosition] = React.useState<'inline' | 'block'>('inline');
+  
+  React.useEffect(() => {
+    if (textRef.current && message.text) {
+      const textWidth = textRef.current.scrollWidth;
+      const containerWidth = textRef.current.parentElement?.parentElement?.clientWidth || 0;
+      // Если текст занимает больше 80% ширины контейнера - время снизу
+      // Или если текст длиннее 60 символов
+      if (textWidth > containerWidth * 0.8 || message.text.length > 50) {
+        setTimePosition('block');
+      } else {
+        setTimePosition('inline');
+      }
+    }
+  }, [message.text]);
+  
+  const hasOnlyMedia = !message.text && !repliedMessage && message.attachments?.some((att: MessageAttachment) => 
+    att.type?.startsWith('image/') || att.type?.startsWith('video/')
+  );
+  
+  if (hasOnlyMedia) {
+    return (
+      <div className="relative">
+        {message.attachments?.map((att: MessageAttachment) => (
+          <MessageAttachmentPreview key={att.id} attachment={att} theme={theme} />
+        ))}
+        <div className="absolute bottom-2 right-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] text-white/80 backdrop-blur-sm">
+          {formatTime(message.createdAt)}
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <>
+      <div className="px-3 md:px-4 py-2">
+        {/* Ответ */}
+        {repliedMessage && (
+          <div className="mb-1 rounded-lg border-l-2 border-white/50 bg-black/20 px-2 py-1 text-xs text-white/85">
+            <div className="font-semibold text-white/90">
+              {repliedMessage.senderId === me.id ? 'Вы' : (repliedSender ? getDisplayName(repliedSender) : 'Unknown')}
+            </div>
+            <div className="truncate text-white/70">
+              {repliedMessage.text?.trim() || (repliedMessage.attachments?.length ? '📎 Вложение' : 'Сообщение')}
+            </div>
+          </div>
+        )}
+        
+        {/* Ник отправителя (только если нет ответа) */}
+        {!repliedMessage && (
+          <div className="flex items-center gap-2 mb-1 text-sm opacity-80">
+            {mine && <span className="font-semibold text-white/90">Вы</span>}
+            {!mine && <span className="font-semibold text-white/90">{sender ? getDisplayName(sender) : 'Unknown'}</span>}
+          </div>
+        )}
+        
+        {/* Текст с временем */}
+        {message.text && (
+          <div className={`flex ${timePosition === 'inline' ? 'flex-row flex-wrap items-baseline gap-1' : 'flex-col'}`}>
+            <p 
+              ref={textRef}
+              className="text-white text-sm leading-relaxed whitespace-pre-wrap break-words"
+            >
+              {message.text}
+            </p>
+            {timePosition === 'inline' && (
+              <span className="text-[10px] text-white/40 flex-shrink-0 ml-1 mt-0.5">
+                {formatTime(message.createdAt)}
+              </span>
+            )}
+            {timePosition === 'block' && (
+              <div className="flex justify-end mt-1">
+                <span className="text-[10px] text-white/40">
+                  {formatTime(message.createdAt)}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Если нет текста, но есть медиа (кроме фото/видео) */}
+        {!message.text && message.attachments && message.attachments.length > 0 && (
+          <div className="flex flex-col gap-1">
+            {message.attachments.map((att: MessageAttachment) => {
+              const isMedia = att.type?.startsWith('image/') || att.type?.startsWith('video/');
+              if (!isMedia) {
+                return <MessageAttachmentPreview key={att.id} attachment={att} theme={theme} />;
+              }
+              return null;
+            })}
+            <div className="flex justify-end mt-1">
+              <span className="text-[10px] text-white/40">{formatTime(message.createdAt)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* Другие вложения (если есть текст) */}
+      {message.text && message.attachments && message.attachments.length > 0 && (
+        <div className="px-3 md:px-4 pb-2 flex flex-col gap-1">
+          {message.attachments.map((att: MessageAttachment) => {
+            const isMedia = att.type?.startsWith('image/') || att.type?.startsWith('video/');
+            if (!isMedia) {
+              return <MessageAttachmentPreview key={att.id} attachment={att} theme={theme} />;
+            }
+            return null;
+          })}
+        </div>
+      )}
+    </>
+  );
+};
+
 export const ChatPage = (props: Props): JSX.Element => {
   const {
-    me, users, activeChat, getDisplayName, getAvatarUrl, onOpenFriendProfile, onOpenGroupProfile, onContextMenu,
+    me, users, activeChat, getDisplayName, getAvatarUrl, getBannerUrl,
+    onOpenFriendProfile, onOpenGroupProfile, onContextMenu,
     replyToMessageId, onClearReply, messageText, onMessageText, onSend, onPickFiles, attachedFiles, onRemoveAttachedFile,
     theme, peerPresence = 'offline', peerLastSeen, onStartCall, isCallActive, callType, participants, onEndCall, onToggleMute, onToggleVideo,
     callExpanded, onToggleCallExpand, localStream, remoteStreams, token,
@@ -289,7 +405,6 @@ export const ChatPage = (props: Props): JSX.Element => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [isNarrow, setIsNarrow] = React.useState(() => window.innerWidth < 768);
 
-  // Функции форматирования статуса
   const formatMinutesDeclension = (minutes: number): string => {
     const lastDigit = minutes % 10;
     const lastTwoDigits = minutes % 100;
@@ -351,7 +466,6 @@ export const ChatPage = (props: Props): JSX.Element => {
     try {
       const uploadedFiles: MessageAttachment[] = [];
       
-      // Загружаем файлы на сервер
       for (const file of attachedFiles) {
         if (file.localFile) {
           const uploaded = await uploadFileChunked(file.localFile, token);
@@ -361,7 +475,6 @@ export const ChatPage = (props: Props): JSX.Element => {
         }
       }
       
-      // Отправляем сообщение через API
       await api(`/api/chats/${activeChat?.id}/messages`, {
         method: 'POST',
         body: JSON.stringify({ 
@@ -371,7 +484,6 @@ export const ChatPage = (props: Props): JSX.Element => {
         }),
       }, token);
       
-      // Очищаем форму
       onMessageText('');
       attachedFiles.forEach(f => { 
         if (f.localFile && f.url?.startsWith('blob:')) URL.revokeObjectURL(f.url); 
@@ -379,7 +491,6 @@ export const ChatPage = (props: Props): JSX.Element => {
       attachedFiles.forEach(f => onRemoveAttachedFile(f.id));
       onClearReply();
       
-      // Обновляем данные
       if (refreshData) {
         await refreshData();
       }
@@ -411,7 +522,7 @@ export const ChatPage = (props: Props): JSX.Element => {
   return (
     <div className="animate-panelIn flex h-full flex-col rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900/90 to-slate-800/90 backdrop-blur-sm shadow-xl">
       {/* Header */}
-      <div className={`relative rounded-2xl m-3 border border-white/10 transition-all duration-300 overflow-hidden ${
+      <div className={`relative rounded-[35px] m-3 border border-white/10 transition-all duration-300 overflow-hidden ${
         isCallActive && callExpanded ? 'bg-slate-800/60' : 'bg-white/5'
       }`}>
         {isCallActive && callExpanded && (
@@ -434,70 +545,87 @@ export const ChatPage = (props: Props): JSX.Element => {
         )}
         
         {(!isCallActive || !callExpanded) && (
-          <div className="flex items-center gap-4 p-3">
-            <div className="relative">
-              <Avatar 
-                imageUrl={peer ? getAvatarUrl(peer.id) : undefined} 
-                name={peer ? getDisplayName(peer) : activeChat?.name ?? 'Чат'} 
-                size={52} 
-              />
-              {peer && peerPresence === 'online' && (
-                <div className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-green-500 ring-2 ring-slate-900" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              {activeChat?.isGroup ? (
-                <button 
-                  className="text-left font-semibold text-white text-lg hover:text-cyan-400 transition" 
-                  onClick={() => activeChat && onOpenGroupProfile?.(activeChat.id)}
-                  type="button"
-                >
-                  {activeChat.name}
-                </button>
-              ) : peer ? (
-                <button 
-                  className="text-left font-semibold text-white text-lg hover:text-cyan-400 transition" 
-                  onClick={() => onOpenFriendProfile(peer.id)} 
-                  type="button"
-                >
-                  {getDisplayName(peer)}
-                </button>
-              ) : (
-                <h2 className="font-semibold text-white text-lg">{activeChat?.name ?? 'Чат'}</h2>
-              )}
-              <p className="text-xs text-white/40">{getStatusText()}</p>
-            </div>
-            {!activeChat?.isGroup && peer && (
-              <div className="flex gap-2">
-                {!isCallActive ? (
-                  <>
-                    <button 
-                      onClick={() => onStartCall('audio', peer.id)} 
-                      className="rounded-full bg-white/10 p-2.5 text-white transition hover:bg-white/20 hover:scale-105"
-                      type="button"
-                    >
-                      <MdCall size={20} />
-                    </button>
-                    <button 
-                      onClick={() => onStartCall('video', peer.id)} 
-                      className="rounded-full bg-white/10 p-2.5 text-white transition hover:bg-white/20 hover:scale-105"
-                      type="button"
-                    >
-                      <MdVideocam size={20} />
-                    </button>
-                  </>
-                ) : (
-                  <button 
-                    onClick={onToggleCallExpand} 
-                    className="rounded-full p-2.5 text-cyan-400 transition hover:scale-105" 
-                    style={{ backgroundColor: `${theme.accentColor}20` }}
-                    type="button"
-                  >
-                    <MdExpandMore size={20} />
-                  </button>
+          <div className="relative">
+            {!activeChat?.isGroup && peer && getBannerUrl && (() => {
+              const peerBannerUrl = getBannerUrl(peer.id);
+              if (!peerBannerUrl) return null;
+              return (
+                <div className="absolute inset-0 h-full w-full overflow-hidden rounded-[35px]">
+                  <img 
+                    src={peerBannerUrl} 
+                    alt="" 
+                    className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-black/40" />
+                </div>
+              );
+            })()}
+            
+            <div className="relative z-10 flex items-center gap-4 p-3">
+              <div className="relative">
+                <Avatar 
+                  imageUrl={peer ? getAvatarUrl(peer.id) : undefined} 
+                  name={peer ? getDisplayName(peer) : activeChat?.name ?? 'Чат'} 
+                  size={52} 
+                />
+                {peer && peerPresence === 'online' && (
+                  <div className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-green-500 ring-2 ring-slate-900" />
                 )}
               </div>
-            )}
+              <div className="flex-1 min-w-0">
+                {activeChat?.isGroup ? (
+                  <button 
+                    className="text-left font-semibold text-white text-lg hover:text-cyan-400 transition" 
+                    onClick={() => activeChat && onOpenGroupProfile?.(activeChat.id)}
+                    type="button"
+                  >
+                    {activeChat.name}
+                  </button>
+                ) : peer ? (
+                  <button 
+                    className="text-left font-semibold text-white text-lg hover:text-cyan-400 transition" 
+                    onClick={() => onOpenFriendProfile(peer.id)} 
+                    type="button"
+                  >
+                    {getDisplayName(peer)}
+                  </button>
+                ) : (
+                  <h2 className="font-semibold text-white text-lg">{activeChat?.name ?? 'Чат'}</h2>
+                )}
+                <p className="text-xs text-white/70">{getStatusText()}</p>
+              </div>
+              {!activeChat?.isGroup && peer && (
+                <div className="flex gap-2">
+                  {!isCallActive ? (
+                    <>
+                      <button 
+                        onClick={() => onStartCall('audio', peer.id)} 
+                        className="rounded-full bg-white/20 backdrop-blur-sm p-2.5 text-white transition hover:bg-white/30 hover:scale-105"
+                        type="button"
+                      >
+                        <MdCall size={20} />
+                      </button>
+                      <button 
+                        onClick={() => onStartCall('video', peer.id)} 
+                        className="rounded-full bg-white/20 backdrop-blur-sm p-2.5 text-white transition hover:bg-white/30 hover:scale-105"
+                        type="button"
+                      >
+                        <MdVideocam size={20} />
+                      </button>
+                    </>
+                  ) : (
+                    <button 
+                      onClick={onToggleCallExpand} 
+                      className="rounded-full p-2.5 text-cyan-400 transition hover:scale-105" 
+                      style={{ backgroundColor: `${theme.accentColor}20` }}
+                      type="button"
+                    >
+                      <MdExpandMore size={20} />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -511,6 +639,7 @@ export const ChatPage = (props: Props): JSX.Element => {
             ? activeChat.messages.find((m) => m.id === message.replyToMessageId)
             : undefined;
           const repliedSender = repliedMessage ? users.find((u) => u.id === repliedMessage.senderId) : undefined;
+          
           return (
             <div key={message.id} className={`flex gap-3 ${mine ? 'justify-end' : 'justify-start'}`}>
               {!mine && (
@@ -524,39 +653,25 @@ export const ChatPage = (props: Props): JSX.Element => {
               )}
               <div
                 onContextMenu={(event) => onContextMenu(event, activeChat.id, message, mine)}
-                className={`group relative max-w-[85%] md:max-w-[70%] rounded-2xl px-3 md:px-4 py-2.5 shadow-lg transition-all hover:shadow-xl animate-msgIn ${mine ? 'rounded-br-md' : 'rounded-bl-md'}`}
+                className={`group relative max-w-[85%] md:max-w-[70%] shadow-lg transition-all hover:shadow-xl animate-msgIn overflow-hidden ${
+                  mine ? 'rounded-br-md' : 'rounded-bl-md'
+                }`}
                 style={{ 
                   backgroundColor: mine ? `${theme.accentColor}CC` : 'rgba(255,255,255,0.1)', 
                   borderRadius: `${theme.bubbleRadius}px` 
                 }}
               >
-                <div className="flex items-center gap-2 mb-1.5 text-sm opacity-80">
-                  {mine && <span className="font-semibold text-white/90">Вы</span>}
-                  {!mine && <span className="font-semibold text-white/90">{sender ? getDisplayName(sender) : 'Unknown'}</span>}
-                  <span className="text-xs text-white/40">{formatTime(message.createdAt)}</span>
-                </div>
-                {repliedMessage && (
-                  <div className="mb-2 rounded-lg border-l-2 border-white/50 bg-black/20 px-2.5 py-1.5 text-xs text-white/85">
-                    <div className="font-semibold text-white/90">
-                      {repliedMessage.senderId === me.id ? 'Вы' : (repliedSender ? getDisplayName(repliedSender) : 'Unknown')}
-                    </div>
-                    <div className="truncate text-white/70">
-                      {repliedMessage.text?.trim() || (repliedMessage.attachments?.length ? '📎 Вложение' : 'Сообщение')}
-                    </div>
-                  </div>
-                )}
-                {message.text && (
-                  <p className="text-white text-sm leading-relaxed whitespace-pre-wrap break-words">
-                    {message.text}
-                  </p>
-                )}
-                {message.attachments && message.attachments.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {message.attachments.map(att => (
-                      <MessageAttachmentPreview key={att.id} attachment={att} theme={theme} />
-                    ))}
-                  </div>
-                )}
+                <MessageBubble
+                  message={message}
+                  mine={mine}
+                  sender={sender}
+                  repliedMessage={repliedMessage}
+                  repliedSender={repliedSender}
+                  theme={theme}
+                  formatTime={formatTime}
+                  getDisplayName={getDisplayName}
+                  me={me}
+                />
               </div>
               {mine && (
                 <div className="flex-shrink-0 mt-1">
@@ -571,7 +686,7 @@ export const ChatPage = (props: Props): JSX.Element => {
 
       {/* Reply Indicator */}
       {replyToMessageId && (
-        <div className="mx-4 mb-2 flex items-center justify-between rounded-xl bg-white/10 px-4 py-2.5 animate-fadeIn border-l-4 border-cyan-400">
+        <div className="mx-4 mb-2 flex items-center justify-between rounded-xl bg-white/10 px-4 py-2 animate-fadeIn border-l-4 border-cyan-400">
           <span className="text-xs text-white/60">Ответ на сообщение</span>
           <button className="text-cyan-400 text-xs hover:text-cyan-300 transition" onClick={onClearReply} type="button">
             Отмена
@@ -581,7 +696,7 @@ export const ChatPage = (props: Props): JSX.Element => {
 
       {/* Input Area */}
       <div className="p-3 md:p-4">
-        <div className={`relative flex flex-col rounded-full bg-white/5 border border-white/10 transition-all ${sendPulse ? 'scale-[1.01] border-cyan-400/50 shadow-lg shadow-cyan-400/20' : ''}`}>
+        <div className={`relative flex flex-col rounded-[35px] bg-white/5 border border-white/10 transition-all ${sendPulse ? 'scale-[1.01] border-cyan-400/50 shadow-lg shadow-cyan-400/20' : ''}`}>
           {flyingText && (
             <div 
               className="pointer-events-none absolute -top-8 left-4 rounded-full px-4 py-1.5 text-xs font-medium text-white shadow-lg animate-sendFlyBetter" 
@@ -621,7 +736,6 @@ export const ChatPage = (props: Props): JSX.Element => {
             </div>
           </form>
           
-          {/* Attached Files Preview */}
           {attachedFiles && attachedFiles.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 pt-0 border-t border-white/10 mt-1 animate-fadeIn">
               {attachedFiles.map((f) => (

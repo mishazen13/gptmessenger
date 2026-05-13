@@ -772,9 +772,9 @@ app.use((error, _req, res, next) => {
 
 // ==================== START SERVER ====================
 const PORT = 4000;
-const HOST = '0.0.0.0';
+const HOST = '192.168.1.104';
 
 server.listen(PORT, HOST, () => {
-  console.log(`API server running on http://localhost:${PORT}`);
+  console.log(`API server running on http://192.168.1.104:${PORT}`);
   console.log(`Uploads directory: ${UPLOADS_DIR}`);
 });

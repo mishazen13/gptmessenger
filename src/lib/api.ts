@@ -3,7 +3,7 @@
 import { MessageAttachment } from '../types';
 
 const API_BASE_URL =
-  (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:4000` : 'http://localhost:4000');
+  (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:4000` : 'http://192.168.1.104:4000');
 
 
 export const api = async <T,>(url: string, options: RequestInit = {}, token?: string): Promise<T> => {

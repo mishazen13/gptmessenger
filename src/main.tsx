@@ -950,6 +950,7 @@ const App = (): JSX.Element => {
                 activeChat={activeChat}
                 getDisplayName={getDisplayName}
                 getAvatarUrl={getAvatarUrl}
+                getBannerUrl={getBannerUrl}
                 onOpenFriendProfile={(id) => { setFriendProfileId(id); setAliasInput(aliases[id] || ''); setIsEditingAlias(false); setAppPage('friend-profile'); }}
                 onOpenGroupProfile={(id) => { setGroupProfileId(id); setNewGroupName(chats.find(c => c.id === id)?.name || ''); setIsEditingGroupName(false); setAppPage('group-profile'); }}
                 onContextMenu={onMessageContextMenu}
