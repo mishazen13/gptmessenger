@@ -196,7 +196,7 @@ export const Sidebar = ({
                       />
                       {directPeer && (
                         <div 
-                          className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-slate-800 transition-all duration-300" 
+                          className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full border-2 border-slate-800 transition-all duration-300" 
                           style={{ backgroundColor: colorMap[peerStatus]?.bg }} 
                         />
                       )}

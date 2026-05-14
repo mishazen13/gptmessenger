@@ -1,4 +1,3 @@
-// main.tsx
 import './polyfills';
 
 import React from 'react';
@@ -186,6 +185,13 @@ const App = (): JSX.Element => {
         api<MeResponse>('/api/me', {}, token),
         api<{ chats: Chat[] }>('/api/chats', {}, token),
       ]);
+      
+      console.log('🔄 RefreshData - new chats:', chatData.chats.map(c => ({
+        id: c.id,
+        messagesCount: c.messages?.length,
+        lastMessage: c.messages?.[c.messages.length - 1]
+      })));
+      
       setMe(meData);
       setChats(chatData.chats);
       await loadUserImages(meData.user.id, token);
@@ -283,25 +289,6 @@ const App = (): JSX.Element => {
   const [isScreenSharing, setIsScreenSharing] = React.useState(false);
   const meId = me?.user.id;
 
-  // Разблокировка аудио контекста при первом взаимодействии
-  React.useEffect(() => {
-    const unlockAudio = () => {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      if (audioContext.state === 'suspended') {
-        audioContext.resume();
-      }
-      document.removeEventListener('click', unlockAudio);
-      document.removeEventListener('touchstart', unlockAudio);
-    };
-    document.addEventListener('click', unlockAudio);
-    document.addEventListener('touchstart', unlockAudio);
-    
-    return () => {
-      document.removeEventListener('click', unlockAudio);
-      document.removeEventListener('touchstart', unlockAudio);
-    };
-  }, []);
-
   React.useEffect(() => {
     if (!token || !me) return;
     socketService.connect(token);
@@ -345,7 +332,6 @@ const App = (): JSX.Element => {
     socketService.on('call:ended', onEnded);
     socketService.on('signal', onSignal);
     socketService.on('presence:update', (payload: Record<string, { status: PresenceStatus }>) => {
-      console.log('📡 presence:update received:', payload);
       const flat: Record<string, PresenceStatus> = {};
       Object.entries(payload).forEach(([id, val]) => { flat[id] = val.status; });
       setPresenceMap(flat);
@@ -365,7 +351,6 @@ const App = (): JSX.Element => {
 
   React.useEffect(() => {
     if (!token || !me || !socketService.isConnected()) return;
-    console.log('📡 Sending presence update:', manualPresence);
     socketService.emit('presence:set', { status: manualPresence, manual: true });
   }, [token, meId, manualPresence]);
 
@@ -526,46 +511,82 @@ const App = (): JSX.Element => {
   const sendMessage = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     if (!token || !activeChat || (!messageText.trim() && attachedFiles.length === 0)) return;
+    
+    // Сохраняем текущие файлы и текст перед очисткой
+    const currentMessageText = messageText;
+    const currentAttachedFiles = [...attachedFiles];
+    
     try {
-      const localFiles = attachedFiles.filter(f => f.localFile);
+      const localFiles = currentAttachedFiles.filter(f => f.localFile);
       let uploaded: MessageAttachment[] = [];
+      
       if (localFiles.length) {
-        uploaded = await Promise.all(localFiles.map(async (file) => {
+        // Загружаем каждый файл последовательно
+        for (const file of localFiles) {
           const currentFile = file.localFile as File;
-          const started = await api<{ uploadId: string }>(`${API_BASE}/api/uploads/chunk/start`, {
-            method: 'POST',
-            body: JSON.stringify({ name: currentFile.name, type: currentFile.type, size: currentFile.size }),
-          }, token);
-          const CHUNK_SIZE = 10 * 1024 * 1024;
-          let offset = 0;
-          while (offset < currentFile.size) {
-            const chunk = currentFile.slice(offset, offset + CHUNK_SIZE);
-            await fetch(`${API_BASE}/api/uploads/chunk/${started.uploadId}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/octet-stream', 'Authorization': `Bearer ${token}` },
-              body: await chunk.arrayBuffer(),
-            });
-            offset += chunk.size;
+          console.log('📎 Uploading file:', {
+            name: currentFile.name,
+            type: currentFile.type,
+            size: currentFile.size
+          });
+          
+          try {
+            // Используем uploadFileChunked
+            const uploadedFile = await uploadFileChunked(currentFile, token);
+            uploaded.push(uploadedFile);
+            console.log('✅ Uploaded successfully:', uploadedFile);
+          } catch (uploadError) {
+            console.error('❌ Upload failed for file:', currentFile.name, uploadError);
+            setNotice(`Ошибка загрузки файла ${currentFile.name}`);
+            return;
           }
-          const finished = await api<{ file: MessageAttachment }>(`${API_BASE}/api/uploads/chunk/${started.uploadId}/finish`, { method: 'POST' }, token);
-          return finished.file;
-        }));
+        }
       }
+      
+      // Подготавливаем attachments для отправки
       const readyAttachments = [
-        ...attachedFiles.filter(f => !f.localFile).map(f => ({ id: f.id, name: f.name, type: f.type, size: f.size, url: f.url })),
+        ...currentAttachedFiles.filter(f => !f.localFile).map(f => ({ 
+          id: f.id, 
+          name: f.name, 
+          type: f.type, 
+          size: f.size, 
+          url: f.url 
+        })),
         ...uploaded,
       ];
+      
+      console.log('📤 Sending message:', {
+        text: currentMessageText,
+        attachmentsCount: readyAttachments.length,
+        attachments: readyAttachments.map(a => ({ name: a.name, type: a.type }))
+      });
+      
+      // Отправляем сообщение
       await api(`/api/chats/${activeChat.id}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ text: messageText, replyToMessageId: replyToMessageId || undefined, attachments: readyAttachments }),
+        body: JSON.stringify({ 
+          text: currentMessageText, 
+          replyToMessageId: replyToMessageId || undefined, 
+          attachments: readyAttachments 
+        }),
       }, token);
-      attachedFiles.forEach(f => { if (f.localFile && f.url.startsWith('blob:')) URL.revokeObjectURL(f.url); });
+      
+      console.log('✅ Message sent successfully');
+      
+      // Очищаем форму только после успешной отправки
+      currentAttachedFiles.forEach(f => { 
+        if (f.localFile && f.url.startsWith('blob:')) URL.revokeObjectURL(f.url); 
+      });
       setMessageText('');
       setAttachedFiles([]);
       setReplyToMessageId('');
+      
+      // Обновляем данные
       await refreshData(true);
+      
     } catch (error) {
-      setNotice((error as Error).message);
+      console.error('❌ Send message error:', error);
+      setNotice(`Ошибка отправки: ${(error as Error).message}`);
     }
   };
 
@@ -597,20 +618,25 @@ const App = (): JSX.Element => {
     setContextMenu(null);
   };
 
-  const handlePickFiles = async (files: FileList | null): Promise<void> => {
-    if (!files?.length) return;
-    try {
-      const MAX_FILE_BYTES = 5 * 1024 * 1024 * 1024;
-      const allowed = Array.from(files).slice(0, 5);
-      const tooBig = allowed.find(f => f.size > MAX_FILE_BYTES);
-      if (tooBig) {
-        setNotice(`Файл ${tooBig.name} слишком большой. Лимит 5 ГБ на файл.`);
-        return;
-      }
-      if (attachedFiles.length + allowed.length > 5) {
+  // Функция для выбора файлов
+  const handlePickFiles = (files: FileList | null): void => {
+    if (!files || files.length === 0) return;
+    
+    const MAX_FILE_BYTES = 5 * 1024 * 1024 * 1024;
+    const allowed = Array.from(files).slice(0, 5);
+    
+    const tooBig = allowed.find(f => f.size > MAX_FILE_BYTES);
+    if (tooBig) {
+      setNotice(`Файл ${tooBig.name} слишком большой. Лимит 5 ГБ на файл.`);
+      return;
+    }
+    
+    setAttachedFiles(prev => {
+      if (prev.length + allowed.length > 5) {
         setNotice('Можно прикрепить не более 5 файлов к сообщению.');
-        return;
+        return prev;
       }
+      
       const nextFiles = allowed.map(file => ({
         id: crypto.randomUUID(),
         name: file.name,
@@ -619,10 +645,9 @@ const App = (): JSX.Element => {
         url: URL.createObjectURL(file),
         localFile: file,
       }));
-      setAttachedFiles(prev => [...prev, ...nextFiles].slice(0, 5));
-    } catch (error) {
-      setNotice((error as Error).message);
-    }
+      
+      return [...prev, ...nextFiles];
+    });
   };
 
   const createGroup = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
@@ -732,8 +757,6 @@ const App = (): JSX.Element => {
         return;
       }
       
-      console.log('📞 Starting call to user:', targetUser.name, 'ID:', peerId);
-      
       const stream = await webrtcService.initLocalStream(type === 'video');
       setCallType(type);
       callPeerIdRef.current = peerId;
@@ -746,12 +769,10 @@ const App = (): JSX.Element => {
       setCallExpanded(true);
       
       webrtcService.createPeer(peerId, true, stream, (signal) => {
-        console.log('📡 Sending signal to', peerId, 'type:', signal.type);
         socketService.emit('signal', { to: peerId, signal });
       });
       
       socketService.emit('call:start', { to: peerId, type, chatId: activeChatId });
-      console.log('📢 Emitted call:start to', peerId);
       
     } catch (error: any) {
       console.error('❌ Failed to start call:', error);
@@ -767,7 +788,6 @@ const App = (): JSX.Element => {
       const stream = await webrtcService.initLocalStream(callData.type === 'video');
       
       webrtcService.createPeer(callData.from, false, stream, (signal) => {
-        console.log('📡 Sending answer signal to', callData.from, 'type:', signal.type);
         socketService.emit('signal', { to: callData.from, signal });
       });
       
@@ -788,7 +808,6 @@ const App = (): JSX.Element => {
       ]);
       
       socketService.emit('call:accept', { from: callData.from });
-      console.log('📢 Emitted call:accept to', callData.from);
       
     } catch (error) {
       console.error('❌ Failed to accept call:', error);
@@ -848,7 +867,7 @@ const App = (): JSX.Element => {
     }
   };
 
-  // Если нет авторизации
+  // Проверка авторизации
   if (!token || !me) {
     if (isFirstVisit) {
       return (
@@ -898,8 +917,6 @@ const App = (): JSX.Element => {
     ? me.users.find(u => u.id === peerId)?.lastSeen 
     : undefined;
   const peerPresenceValue = peerId ? (presenceMap[peerId] || 'offline') : 'offline';
-
-  console.log('👤 Peer ID:', peerId, 'Peer Presence:', peerPresenceValue, 'Peer LastSeen:', peerLastSeen);
 
   return (
     <main
@@ -959,21 +976,7 @@ const App = (): JSX.Element => {
                 messageText={messageText}
                 onMessageText={setMessageText}
                 onSend={sendMessage}
-                onPickFiles={(files) => {
-                  console.log('📎 onPickFiles called with:', files);
-                  if (files) {
-                    const newFiles = Array.from(files).map(file => ({
-                      id: crypto.randomUUID(),
-                      name: file.name,
-                      type: file.type || 'application/octet-stream',
-                      size: file.size,
-                      url: URL.createObjectURL(file),
-                      localFile: file,
-                    }));
-                    console.log('📎 New files created:', newFiles);
-                    setAttachedFiles(prev => [...prev, ...newFiles].slice(0, 5));
-                  }
-                }}
+                onPickFiles={handlePickFiles}
                 attachedFiles={attachedFiles}
                 onRemoveAttachedFile={(id) => setAttachedFiles(prev => {
                   const removing = prev.find(item => item.id === id);
@@ -996,6 +999,7 @@ const App = (): JSX.Element => {
                 remoteStreams={remoteStreams}
                 onToggleScreenShare={toggleScreenShare}
                 isScreenSharing={isScreenSharing}
+                refreshData={refreshData}
               />
             )}
             {appPage === 'plus' && <PlusPage onOpenAddFriend={() => setAppPage('add-friend')} onOpenCreateGroup={() => setAppPage('create-group')} />}
