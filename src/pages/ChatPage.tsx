@@ -31,6 +31,7 @@ type Props = {
   peerLastSeen?: number;
   onStartCall: (type: CallType, peerId: string) => void;
   isCallActive: boolean;
+  isCallConnected: boolean;
   callType: CallType;
   participants: CallParticipant[];
   onEndCall: () => void;
@@ -369,15 +370,11 @@ const MessageBubble = ({ message, mine, sender, repliedMessage, repliedSender, t
         )}
       </div>
       
-      {/* Другие вложения (если есть текст) */}
+      {/* Вложения (если есть текст) */}
       {message.text && message.attachments && message.attachments.length > 0 && (
         <div className="px-3 md:px-4 pb-2 flex flex-col gap-1">
           {message.attachments.map((att: MessageAttachment) => {
-            const isMedia = att.type?.startsWith('image/') || att.type?.startsWith('video/');
-            if (!isMedia) {
-              return <MessageAttachmentPreview key={att.id} attachment={att} theme={theme} />;
-            }
-            return null;
+            return <MessageAttachmentPreview key={att.id} attachment={att} theme={theme} />;
           })}
         </div>
       )}
@@ -391,6 +388,7 @@ export const ChatPage = (props: Props): JSX.Element => {
     onOpenFriendProfile, onOpenGroupProfile, onContextMenu,
     replyToMessageId, onClearReply, messageText, onMessageText, onSend, onPickFiles, attachedFiles, onRemoveAttachedFile,
     theme, peerPresence = 'offline', peerLastSeen, onStartCall, isCallActive, callType, participants, onEndCall, onToggleMute, onToggleVideo,
+    isCallConnected,
     callExpanded, onToggleCallExpand, localStream, remoteStreams, token,
     refreshData,
     onToggleScreenShare,
@@ -541,6 +539,7 @@ export const ChatPage = (props: Props): JSX.Element => {
             remoteStreams={remoteStreams}
             onToggleScreenShare={onToggleScreenShare}
             isScreenSharing={isScreenSharing}
+            isConnected={isCallConnected}
           />
         )}
         

@@ -82,7 +82,7 @@ export type AppPage =
   | 'friend-profile'
   | 'group-profile'; // Добавьте эту строку
 export type AuthPage = 'login' | 'register';
-export type SettingsSection = 'profile' | 'personalization' | 'session' | 'about';
+export type SettingsSection = 'profile' | 'personalization' | 'privacy' | 'session' | 'about';
 
 export type MessageContextMenu = {
   x: number;
@@ -129,6 +129,7 @@ export type CallParticipant = {
   isSpeaking: boolean;
   audioLevel?: number;
   stream?: MediaStream;
+  isRinging?: boolean;
 };
 
 export type CallState = {

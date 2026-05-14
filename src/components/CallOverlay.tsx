@@ -18,6 +18,7 @@ type Props = {
   remoteStreams?: Map<string, MediaStream>;
   onToggleScreenShare?: () => void;
   isScreenSharing?: boolean;
+  isConnected?: boolean;
 };
 
 const ParticipantTile = ({ 
@@ -38,6 +39,7 @@ const ParticipantTile = ({
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const [hasVideo, setHasVideo] = React.useState(false);
   const [isAudioPlaying, setIsAudioPlaying] = React.useState(false);
+  const [audioLevel, setAudioLevel] = React.useState(0);
   const audioRef = React.useRef<HTMLAudioElement>(null);
 
   const enableAudio = React.useCallback(() => {
@@ -88,10 +90,38 @@ const ParticipantTile = ({
     };
   }, [stream, isLocal, enableAudio, participant.name]);
 
+  React.useEffect(() => {
+    if (!stream || participant.isMuted) return;
+    let raf = 0;
+    let audioContext: AudioContext | null = null;
+    try {
+      audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const loop = () => {
+        analyser.getByteFrequencyData(data);
+        const avg = data.reduce((acc, v) => acc + v, 0) / data.length / 255;
+        setAudioLevel(avg);
+        raf = requestAnimationFrame(loop);
+      };
+      loop();
+    } catch {
+      setAudioLevel(0);
+    }
+    return () => {
+      cancelAnimationFrame(raf);
+      if (audioContext) void audioContext.close();
+    };
+  }, [stream, participant.isMuted]);
+
   const shouldShowVideo = (isVideoCall || isScreenSharing) && participant.isVideoEnabled && hasVideo;
+  const speakingNow = isSpeaking || audioLevel > 0.06;
   
   return (
-    <div className={`relative aspect-video overflow-hidden rounded-xl border-2 transition-all duration-200 ${isSpeaking && !participant.isMuted ? 'border-green-400 shadow-lg shadow-green-400/20' : 'border-transparent'} bg-slate-900/50`}>
+    <div className={`relative aspect-video overflow-hidden rounded-xl border-2 transition-all duration-300 ${speakingNow && !participant.isMuted ? 'border-green-400 shadow-lg shadow-green-400/20' : 'border-transparent'} ${participant.isRinging ? 'opacity-65 animate-pulse' : ''} bg-slate-900/50`}>
       {/* Кнопка включения звука для удаленных участников */}
       {!isLocal && !isAudioPlaying && (
         <button
@@ -156,6 +186,7 @@ export const CallOverlay = ({
   remoteStreams = new Map(),
   onToggleScreenShare,
   isScreenSharing = false,
+  isConnected = false,
 }: Props): JSX.Element | null => {
   if (!isOpen) return null;
 
@@ -223,7 +254,7 @@ export const CallOverlay = ({
           <span className="flex items-center gap-1 text-white">
             {isScreenSharing ? <MdDesktopMac size={16} className="text-cyan-400" /> : callType === 'video' ? <MdVideocam size={16} /> : <MdCall size={16} />}
             <span className="text-sm">
-              {isScreenSharing ? 'Демонстрация экрана' : callType === 'video' ? 'Видеозвонок' : 'Аудиозвонок'}
+              {isScreenSharing ? 'Демонстрация экрана' : callType === 'video' ? 'Видеозвонок' : 'Аудиозвонок'} {!isConnected ? '• вызов...' : ''}
             </span>
           </span>
           <div className="flex gap-2">
