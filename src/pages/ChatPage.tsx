@@ -31,6 +31,7 @@ type Props = {
   peerLastSeen?: number;
   onStartCall: (type: CallType, peerId: string) => void;
   isCallActive: boolean;
+  isCallConnected: boolean;
   callType: CallType;
   participants: CallParticipant[];
   onEndCall: () => void;
@@ -387,6 +388,7 @@ export const ChatPage = (props: Props): JSX.Element => {
     onOpenFriendProfile, onOpenGroupProfile, onContextMenu,
     replyToMessageId, onClearReply, messageText, onMessageText, onSend, onPickFiles, attachedFiles, onRemoveAttachedFile,
     theme, peerPresence = 'offline', peerLastSeen, onStartCall, isCallActive, callType, participants, onEndCall, onToggleMute, onToggleVideo,
+    isCallConnected,
     callExpanded, onToggleCallExpand, localStream, remoteStreams, token,
     refreshData,
     onToggleScreenShare,
@@ -537,6 +539,7 @@ export const ChatPage = (props: Props): JSX.Element => {
             remoteStreams={remoteStreams}
             onToggleScreenShare={onToggleScreenShare}
             isScreenSharing={isScreenSharing}
+            isConnected={isCallConnected}
           />
         )}
         

@@ -129,6 +129,7 @@ export type CallParticipant = {
   isSpeaking: boolean;
   audioLevel?: number;
   stream?: MediaStream;
+  isRinging?: boolean;
 };
 
 export type CallState = {

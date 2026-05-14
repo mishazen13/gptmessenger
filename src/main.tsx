@@ -283,6 +283,7 @@ const App = (): JSX.Element => {
   const pendingOfferRef = React.useRef<Map<string, unknown>>(new Map());
   const [callType, setCallType] = React.useState<CallType>('audio');
   const [isCallActive, setIsCallActive] = React.useState(false);
+  const [isCallConnected, setIsCallConnected] = React.useState(false);
   const [callExpanded, setCallExpanded] = React.useState(true);
   const [participants, setParticipants] = React.useState<CallParticipant[]>([]);
   const [remoteStreams, setRemoteStreams] = React.useState<Map<string, MediaStream>>(new Map());
@@ -293,25 +294,53 @@ const App = (): JSX.Element => {
     if (!token || !me) return;
     socketService.connect(token);
 
-    const onIncoming = ({ from, fromName, fromAvatar, type, chatId }: any) =>
+    const onIncoming = ({ from, fromName, fromAvatar, type, chatId }: any) => {
       setIncomingCall({ from, fromName, fromAvatar, type, chatId });
-    const onAccepted = () => setIsCallActive(true);
+      setCallType(type);
+      setIsCallActive(true);
+      setIsCallConnected(false);
+      setCallExpanded(true);
+      setParticipants([
+        { userId: from, name: fromName, avatarUrl: fromAvatar, isMuted: false, isVideoEnabled: type === 'video', isSpeaking: false, isRinging: true },
+      ]);
+    };
+    const onAccepted = () => {
+      setIsCallActive(true);
+      setIsCallConnected(true);
+      setParticipants(prev => prev.map(p => p.userId === callPeerIdRef.current ? { ...p, isRinging: false } : p));
+    };
     const onRejected = ({ from }: any) => {
       setNotice('Звонок отклонен');
-      setIsCallActive(false);
-      setParticipants([]);
+      setParticipants((prev) => {
+        const localOnly = meId ? prev.filter((p) => p.userId === meId) : [];
+        return localOnly;
+      });
       setRemoteStreams(new Map());
-      callPeerIdRef.current = '';
+      if (callPeerIdRef.current === from) callPeerIdRef.current = '';
       setIsScreenSharing(false);
-      webrtcService.endAllCalls();
+      setIsCallConnected(false);
+      if (!meId) {
+        setIsCallActive(false);
+        webrtcService.endAllCalls();
+      }
     };
     const onEnded = () => {
-      webrtcService.endAllCalls();
-      setIsCallActive(false);
-      setParticipants([]);
+      setParticipants((prev) => {
+        const localOnly = meId ? prev.filter((p) => p.userId === meId) : [];
+        if (localOnly.length > 0) {
+          setIsCallActive(true);
+          return localOnly;
+        }
+        return [];
+      });
       setRemoteStreams(new Map());
       callPeerIdRef.current = '';
       setIsScreenSharing(false);
+      setIsCallConnected(false);
+      if (!meId) {
+        webrtcService.endAllCalls();
+        setIsCallActive(false);
+      }
     };
     const onSignal = ({ from, signal }: any) => {
       const signalType = (signal as { type?: string })?.type;
@@ -763,9 +792,10 @@ const App = (): JSX.Element => {
       
       setParticipants([
         { userId: me.user.id, name: getDisplayName(me.user), avatarUrl: getAvatarUrl(me.user.id), isMuted: false, isVideoEnabled: type === 'video', isSpeaking: false },
-        { userId: peerId, name: getDisplayName(targetUser), avatarUrl: getAvatarUrl(peerId), isMuted: false, isVideoEnabled: type === 'video', isSpeaking: false },
+        { userId: peerId, name: getDisplayName(targetUser), avatarUrl: getAvatarUrl(peerId), isMuted: false, isVideoEnabled: type === 'video', isSpeaking: false, isRinging: true },
       ]);
       setIsCallActive(true);
+      setIsCallConnected(false);
       setCallExpanded(true);
       
       webrtcService.createPeer(peerId, true, stream, (signal) => {
@@ -800,6 +830,7 @@ const App = (): JSX.Element => {
       setCallType(callData.type);
       callPeerIdRef.current = callData.from;
       setIsCallActive(true);
+      setIsCallConnected(true);
       setCallExpanded(true);
       
       setParticipants([
@@ -824,6 +855,7 @@ const App = (): JSX.Element => {
     setRemoteStreams(new Map());
     callPeerIdRef.current = '';
     setIsScreenSharing(false);
+    setIsCallConnected(false);
   };
 
   const toggleMuteCall = (): void => {
@@ -988,6 +1020,7 @@ const App = (): JSX.Element => {
                 peerLastSeen={peerLastSeen}
                 onStartCall={startCall}
                 isCallActive={isCallActive}
+                isCallConnected={isCallConnected}
                 callType={callType}
                 participants={participants}
                 onEndCall={endCall}
