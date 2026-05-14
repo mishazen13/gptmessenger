@@ -369,15 +369,11 @@ const MessageBubble = ({ message, mine, sender, repliedMessage, repliedSender, t
         )}
       </div>
       
-      {/* Другие вложения (если есть текст) */}
+      {/* Вложения (если есть текст) */}
       {message.text && message.attachments && message.attachments.length > 0 && (
         <div className="px-3 md:px-4 pb-2 flex flex-col gap-1">
           {message.attachments.map((att: MessageAttachment) => {
-            const isMedia = att.type?.startsWith('image/') || att.type?.startsWith('video/');
-            if (!isMedia) {
-              return <MessageAttachmentPreview key={att.id} attachment={att} theme={theme} />;
-            }
-            return null;
+            return <MessageAttachmentPreview key={att.id} attachment={att} theme={theme} />;
           })}
         </div>
       )}

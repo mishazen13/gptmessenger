@@ -3,7 +3,7 @@ import './polyfills';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles.css';
-import { api } from './lib/api';
+import { api, uploadFileChunked } from './lib/api';
 import { 
   AppPage, 
   AuthPage, 

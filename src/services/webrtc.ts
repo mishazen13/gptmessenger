@@ -82,10 +82,7 @@ class WebRTCService {
   async startScreenShare(): Promise<MediaStream | null> {
     try {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          cursor: 'always',
-          displaySurface: 'monitor'
-        },
+        video: true,
         audio: true
       });
       
@@ -155,8 +152,9 @@ class WebRTCService {
       if (!videoTrack) return;
       
       // Находим sender для видео
-      if (peer._pc) {
-        const senders = peer._pc.getSenders();
+      const rtcpPeer = (peer as Peer.Instance & { _pc?: RTCPeerConnection })._pc;
+      if (rtcpPeer) {
+        const senders = rtcpPeer.getSenders();
         const videoSender = senders.find(s => s.track?.kind === 'video');
         if (videoSender && videoTrack) {
           videoSender.replaceTrack(videoTrack)
@@ -189,7 +187,7 @@ class WebRTCService {
     
     if (userId) {
       console.log('🔄 Recreating peer for', userId);
-      const oldOnSignal = peer._events?.signal;
+      const oldOnSignal = (peer as Peer.Instance & { _events?: { signal?: (signal: unknown) => void } })._events?.signal;
       peer.destroy();
       this.peers.delete(userId);
       
