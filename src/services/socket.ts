@@ -16,7 +16,7 @@ const resolveSocketUrl = (): string => {
   if (typeof window !== 'undefined') {
     const isDevPort = window.location.port === '5173';
     if (isDevPort) {
-      return `${window.location.protocol}//${window.location.hostname}:4000`;
+      return `http://${window.location.hostname}:4000`;
     }
     return window.location.origin;
   }
