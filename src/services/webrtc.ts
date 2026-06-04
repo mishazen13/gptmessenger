@@ -1,6 +1,24 @@
 // services/webrtc.ts
 import Peer from 'simple-peer';
 
+type LegacyNavigator = Navigator & {
+  getUserMedia?: (
+    constraints: MediaStreamConstraints,
+    successCallback: (stream: MediaStream) => void,
+    errorCallback: (error: Error) => void
+  ) => void;
+  webkitGetUserMedia?: (
+    constraints: MediaStreamConstraints,
+    successCallback: (stream: MediaStream) => void,
+    errorCallback: (error: Error) => void
+  ) => void;
+  mozGetUserMedia?: (
+    constraints: MediaStreamConstraints,
+    successCallback: (stream: MediaStream) => void,
+    errorCallback: (error: Error) => void
+  ) => void;
+};
+
 class WebRTCService {
   private peers: Map<string, Peer.Instance> = new Map();
   private localStream: MediaStream | null = null;
@@ -10,6 +28,42 @@ class WebRTCService {
   private pendingOffers: Map<string, any> = new Map();
   private audioElements: Map<string, HTMLAudioElement> = new Map();
   private isScreenSharing: boolean = false;
+
+  private getMediaErrorMessage(): string {
+    if (typeof navigator === 'undefined' || typeof window === 'undefined') {
+      return 'Медиаустройства доступны только в браузере.';
+    }
+
+    const isLocalhost = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+    if (window.location.protocol !== 'https:' && !isLocalhost) {
+      return 'Доступ к медиаустройствам требует HTTPS или localhost. Откройте приложение по HTTPS, иначе браузер скрывает getUserMedia.';
+    }
+
+    return 'Браузер не поддерживает доступ к микрофону и камере через getUserMedia.';
+  }
+
+  private async requestUserMedia(constraints: MediaStreamConstraints): Promise<MediaStream> {
+    if (typeof navigator === 'undefined') {
+      throw new Error(this.getMediaErrorMessage());
+    }
+
+    if (navigator.mediaDevices?.getUserMedia) {
+      return navigator.mediaDevices.getUserMedia(constraints);
+    }
+
+    const legacyNavigator = navigator as LegacyNavigator;
+    const legacyGetUserMedia = legacyNavigator.getUserMedia
+      ?? legacyNavigator.webkitGetUserMedia
+      ?? legacyNavigator.mozGetUserMedia;
+
+    if (legacyGetUserMedia) {
+      return new Promise((resolve, reject) => {
+        legacyGetUserMedia.call(legacyNavigator, constraints, resolve, reject);
+      });
+    }
+
+    throw new Error(this.getMediaErrorMessage());
+  }
 
   async initLocalStream(videoEnabled: boolean = false): Promise<MediaStream> {
     if (this.localStream && this.localStream.active && !this.isScreenSharing) {
@@ -35,7 +89,7 @@ class WebRTCService {
         } : false
       };
       
-      this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      this.localStream = await this.requestUserMedia(constraints);
       
       // Сохраняем копию потока с камеры
       if (!this.cameraStream && videoEnabled) {
@@ -81,6 +135,10 @@ class WebRTCService {
   // Демонстрация экрана
   async startScreenShare(): Promise<MediaStream | null> {
     try {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getDisplayMedia) {
+        throw new Error(this.getMediaErrorMessage());
+      }
+
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
         audio: true
