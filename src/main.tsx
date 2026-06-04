@@ -85,6 +85,14 @@ const savePrefs = (prefs: PrefMap): void => {
 
 const API_BASE = 'http://192.168.1.104:4000';
 
+const getFullUrl = (urlPath: string | null | undefined): string | undefined => {
+  if (!urlPath) return undefined;
+  if (urlPath.startsWith('http')) return urlPath;
+  const cleanPath = urlPath.startsWith('/') ? urlPath : `/${urlPath}`;
+  return `${API_BASE}${cleanPath}`;
+};
+
+
 const App = (): JSX.Element => {
   const [groupAvatar, setGroupAvatar] = React.useState('');
   const [isFirstVisit, setIsFirstVisit] = React.useState(() => localStorage.getItem('liquid-visited') !== 'true');
@@ -145,9 +153,26 @@ const App = (): JSX.Element => {
   };
 
   const getDisplayName = (user: PublicUser): string => aliases[user.id] || user.name;
-  const getAvatarUrl = (userId: string): string | undefined => prefs[userId]?.avatarUrl;
-  const getBannerUrl = (userId: string): string | undefined => prefs[userId]?.bannerUrl;
-  const getWallpaperUrl = (userId: string): string | undefined => prefs[userId]?.wallpaperUrl;
+  // Найдите эти строки в вашем main.tsx и замените их:
+
+  const getAvatarUrl = (userId: string): string | undefined => {
+    const url = prefs[userId]?.avatarUrl;
+    if (!url) return undefined;
+    // Проверяем, не вернул ли сервер уже готовую http-ссылку
+    return url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+  };
+
+  const getBannerUrl = (userId: string): string | undefined => {
+    const url = prefs[userId]?.bannerUrl;
+    if (!url) return undefined;
+    return url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+  };
+
+  const getWallpaperUrl = (userId: string): string | undefined => {
+    const url = prefs[userId]?.wallpaperUrl;
+    if (!url) return undefined;
+    return url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+  };
 
   const theme = { ...DEFAULT_THEME, ...(prefs[me?.user.id || '']?.theme ?? {}) };
   const selectedColorTheme = COLOR_THEMES.find(t => t.accentColor === theme.accentColor) || COLOR_THEMES[0];
