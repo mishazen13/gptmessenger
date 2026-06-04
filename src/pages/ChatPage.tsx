@@ -51,7 +51,7 @@ type Props = {
 
 const formatTime = (value: number): string => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const statusLabel: Record<PresenceStatus, string> = { online: 'в сети', offline: 'не в сети', dnd: 'не беспокоить' };
-const FILE_BASE_URL = `${window.location.protocol}//${window.location.hostname}:4000`;
+const FILE_BASE_URL = `http://192.168.0.100:4000`;
 
 const downloadFile = (url: string, filename: string) => {
   const fullUrl = url.startsWith('http') ? url : `${FILE_BASE_URL}${url}`;
