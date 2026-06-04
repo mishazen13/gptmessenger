@@ -46,6 +46,8 @@ type Props = {
   token: string;
   onToggleScreenShare?: () => void;
   isScreenSharing?: boolean;
+  isJoinOnlyCall?: boolean;
+  onJoinCall?: () => void;
   refreshData?: (silent?: boolean) => Promise<void>;
 };
 
@@ -393,6 +395,8 @@ export const ChatPage = (props: Props): JSX.Element => {
     refreshData,
     onToggleScreenShare,
     isScreenSharing = false,
+    isJoinOnlyCall = false,
+    onJoinCall,
   } = props;
 
   const peer = activeChat && !activeChat.isGroup ? users.find((u) => u.id !== me.id && activeChat.memberIds.includes(u.id)) : undefined;
@@ -540,6 +544,8 @@ export const ChatPage = (props: Props): JSX.Element => {
             onToggleScreenShare={onToggleScreenShare}
             isScreenSharing={isScreenSharing}
             isConnected={isCallConnected}
+            isJoinOnly={isJoinOnlyCall}
+            onJoinCall={onJoinCall}
           />
         )}
         
