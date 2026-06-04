@@ -130,6 +130,7 @@ export type CallParticipant = {
   audioLevel?: number;
   stream?: MediaStream;
   isRinging?: boolean;
+  isScreenSharing?: boolean;
 };
 
 export type CallState = {

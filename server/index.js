@@ -133,14 +133,14 @@ const emitPresence = () => {
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error('Authentication error'));
-  
+
   const db = readDb();
   const session = db.sessions.find(s => s.token === token);
   if (!session) return next(new Error('Authentication error'));
-  
+
   const user = db.users.find(u => u.id === session.userId);
   if (!user) return next(new Error('Authentication error'));
-  
+
   socket.data.user = user;
   next();
 });
@@ -148,7 +148,7 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   const user = socket.data.user;
   console.log(`User connected: ${user.name} (${user.id})`);
-  
+
   // Обновляем lastSeen при подключении
   const db = readDb();
   const userIndex = db.users.findIndex(u => u.id === user.id);
@@ -156,14 +156,14 @@ io.on('connection', (socket) => {
     db.users[userIndex].lastSeen = Date.now();
     writeDb(db);
   }
-  
+
   onlineUsers.set(user.id, { socketId: socket.id, user });
   const previousPresence = userPresence.get(user.id);
   userPresence.set(user.id, {
     status: previousPresence?.manual ? previousPresence.status : 'online',
     manual: previousPresence?.manual ?? false,
   });
-  
+
   io.emit('users:online', Array.from(onlineUsers.values()).map(u => u.user.id));
   emitPresence();
 
@@ -172,7 +172,7 @@ io.on('connection', (socket) => {
     userPresence.set(user.id, { status, manual: Boolean(manual) });
     emitPresence();
   });
-  
+
   socket.on('call:start', ({ to, type, chatId }) => {
     console.log('📞 call:start received from', user.name, 'to', to, 'type', type);
     const target = onlineUsers.get(to);
@@ -189,7 +189,7 @@ io.on('connection', (socket) => {
       console.log('❌ Target not online:', to);
     }
   });
-  
+
   socket.on('call:accept', ({ from }) => {
     const target = onlineUsers.get(from);
     if (target) {
@@ -197,7 +197,7 @@ io.on('connection', (socket) => {
       io.to(target.socketId).emit('call:accepted', { to: user.id });
     }
   });
-  
+
   socket.on('call:reject', ({ from }) => {
     const target = onlineUsers.get(from);
     if (target) {
@@ -205,7 +205,14 @@ io.on('connection', (socket) => {
       io.to(target.socketId).emit('call:rejected', { to: user.id });
     }
   });
-  
+
+  socket.on('call:media-state', ({ to, state }) => {
+    const target = onlineUsers.get(to);
+    if (target) {
+      io.to(target.socketId).emit('call:media-state', { from: user.id, state });
+    }
+  });
+
   socket.on('call:end', ({ to }) => {
     const target = onlineUsers.get(to);
     if (target) {
@@ -213,7 +220,7 @@ io.on('connection', (socket) => {
       io.to(target.socketId).emit('call:ended', { from: user.id });
     }
   });
-  
+
   socket.on('signal', ({ to, signal }) => {
     const target = onlineUsers.get(to);
     if (target) {
@@ -221,11 +228,11 @@ io.on('connection', (socket) => {
       io.to(target.socketId).emit('signal', { from: user.id, signal });
     }
   });
-  
+
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${user.name}`);
     onlineUsers.delete(user.id);
-    
+
     // Обновляем lastSeen при отключении
     const db = readDb();
     const userIndex = db.users.findIndex(u => u.id === user.id);
@@ -233,7 +240,7 @@ io.on('connection', (socket) => {
       db.users[userIndex].lastSeen = Date.now();
       writeDb(db);
     }
-    
+
     const existingPresence = userPresence.get(user.id);
     userPresence.set(user.id, {
       status: existingPresence?.manual ? existingPresence.status : 'offline',
@@ -257,10 +264,10 @@ app.post('/api/auth/register', (req, res) => {
     return res.status(409).json({ error: 'user already exists' });
   }
 
-  const user = { 
-    id: uuidv4(), 
-    name: name.trim(), 
-    email: emailNormalized, 
+  const user = {
+    id: uuidv4(),
+    name: name.trim(),
+    email: emailNormalized,
     password,
     images: {},
     bio: '',
@@ -334,15 +341,15 @@ app.get('/api/users/:userId/bio', (req, res) => {
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
   }
-  return res.json({ 
-    bio: user.bio || '', 
+  return res.json({
+    bio: user.bio || '',
     lastSeen: user.lastSeen || null,
     privacy: user.privacy || {
       showLastSeen: true,
       showReadReceipts: true,
       allowNonFriendsMessage: true,
       showProfilePhoto: true,
-    } 
+    }
   });
 });
 
@@ -354,7 +361,7 @@ app.put('/api/users/:userId/bio', requireAuth, (req, res) => {
   const db = readDb();
   const userIndex = db.users.findIndex(u => u.id === user.id);
   if (userIndex === -1) return res.status(404).json({ error: 'User not found' });
-  
+
   db.users[userIndex].bio = req.body.bio || '';
   writeDb(db);
   return res.json({ ok: true });
@@ -368,7 +375,7 @@ app.put('/api/users/:userId/privacy', requireAuth, (req, res) => {
   const db = readDb();
   const userIndex = db.users.findIndex(u => u.id === user.id);
   if (userIndex === -1) return res.status(404).json({ error: 'User not found' });
-  
+
   db.users[userIndex].privacy = {
     ...db.users[userIndex].privacy,
     ...req.body,
@@ -381,68 +388,68 @@ app.put('/api/users/:userId/privacy', requireAuth, (req, res) => {
 app.post('/api/users/upload-image', requireAuth, upload.single('file'), (req, res) => {
   const user = req.authUser;
   const { field } = req.body;
-  
+
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
-  
+
   if (!field || !['avatarUrl', 'bannerUrl'].includes(field)) {
     return res.status(400).json({ error: 'Invalid field name. Use "avatarUrl" or "bannerUrl"' });
   }
-  
+
   const db = readDb();
   const userIndex = db.users.findIndex(u => u.id === user.id);
-  
+
   if (userIndex === -1) {
     return res.status(404).json({ error: 'User not found' });
   }
-  
+
   const imageUrl = `/uploads/${req.file.filename}`;
-  
+
   if (!db.users[userIndex].images) {
     db.users[userIndex].images = {};
   }
-  
+
   db.users[userIndex].images[field] = imageUrl;
   writeDb(db);
-  
+
   return res.json({ url: imageUrl });
 });
 
 app.post('/api/users/upload-wallpaper', requireAuth, upload.single('file'), (req, res) => {
   const user = req.authUser;
-  
+
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
-  
+
   const db = readDb();
   const userIndex = db.users.findIndex(u => u.id === user.id);
-  
+
   if (userIndex === -1) {
     return res.status(404).json({ error: 'User not found' });
   }
-  
+
   const wallpaperUrl = `/uploads/${req.file.filename}`;
-  
+
   if (!db.users[userIndex].images) {
     db.users[userIndex].images = {};
   }
-  
+
   db.users[userIndex].images.wallpaperUrl = wallpaperUrl;
   writeDb(db);
-  
+
   return res.json({ url: wallpaperUrl });
 });
 
 app.get('/api/users/:userId/images', (req, res) => {
   const db = readDb();
   const user = db.users.find(u => u.id === req.params.userId);
-  
+
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
   }
-  
+
   return res.json({
     avatarUrl: user.images?.avatarUrl || null,
     bannerUrl: user.images?.bannerUrl || null,
@@ -533,7 +540,7 @@ app.post('/api/chats/group', requireAuth, (req, res) => {
     creatorId: user.id,
     createdAt: Date.now(),
   };
-  
+
   db.chats.push(chat);
   writeDb(db);
   return res.status(201).json({ chat });
@@ -545,15 +552,15 @@ app.patch('/api/chats/:chatId', requireAuth, (req, res) => {
 
   const chat = db.chats.find((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
   if (!chat) return res.status(404).json({ error: 'chat not found' });
-  
+
   if (!chat.isGroup) return res.status(400).json({ error: 'not a group chat' });
-  
+
   if (chat.creatorId !== user.id) return res.status(403).json({ error: 'only creator can rename group' });
 
   if (req.body.name) {
     chat.name = req.body.name.trim();
   }
-  
+
   writeDb(db);
   return res.json({ chat });
 });
@@ -564,17 +571,17 @@ app.post('/api/chats/:chatId/leave', requireAuth, (req, res) => {
 
   const chatIndex = db.chats.findIndex((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
   if (chatIndex === -1) return res.status(404).json({ error: 'chat not found' });
-  
+
   const chat = db.chats[chatIndex];
-  
+
   if (!chat.isGroup) return res.status(400).json({ error: 'not a group chat' });
-  
+
   chat.memberIds = chat.memberIds.filter(id => id !== user.id);
-  
+
   if (chat.memberIds.length === 0) {
     db.chats.splice(chatIndex, 1);
   }
-  
+
   writeDb(db);
   return res.json({ ok: true });
 });
@@ -585,13 +592,13 @@ app.delete('/api/chats/:chatId', requireAuth, (req, res) => {
 
   const chatIndex = db.chats.findIndex((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
   if (chatIndex === -1) return res.status(404).json({ error: 'chat not found' });
-  
+
   const chat = db.chats[chatIndex];
-  
+
   if (!chat.isGroup) return res.status(400).json({ error: 'not a group chat' });
-  
+
   if (chat.creatorId !== user.id) return res.status(403).json({ error: 'only creator can delete group' });
-  
+
   db.chats.splice(chatIndex, 1);
   writeDb(db);
   return res.json({ ok: true });
@@ -669,19 +676,19 @@ app.post('/api/chats/:chatId/members', requireAuth, (req, res) => {
 
   const chat = db.chats.find((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
   if (!chat) return res.status(404).json({ error: 'chat not found' });
-  
+
   if (!chat.isGroup) return res.status(400).json({ error: 'not a group chat' });
-  
+
   const { userId } = req.body;
   if (!userId) return res.status(400).json({ error: 'userId required' });
-  
+
   const userToAdd = db.users.find(u => u.id === userId);
   if (!userToAdd) return res.status(404).json({ error: 'user not found' });
-  
+
   if (chat.memberIds.includes(userId)) {
     return res.status(400).json({ error: 'user already in group' });
   }
-  
+
   chat.memberIds.push(userId);
   writeDb(db);
   return res.json({ ok: true });
@@ -693,15 +700,15 @@ app.delete('/api/chats/:chatId/members/:userId', requireAuth, (req, res) => {
 
   const chat = db.chats.find((item) => item.id === req.params.chatId && item.memberIds.includes(user.id));
   if (!chat) return res.status(404).json({ error: 'chat not found' });
-  
+
   if (!chat.isGroup) return res.status(400).json({ error: 'not a group chat' });
-  
+
   const { userId } = req.params;
-  
+
   if (userId === chat.creatorId) {
     return res.status(400).json({ error: 'cannot remove creator' });
   }
-  
+
   chat.memberIds = chat.memberIds.filter(id => id !== userId);
   writeDb(db);
   return res.json({ ok: true });

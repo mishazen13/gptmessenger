@@ -313,29 +313,58 @@ const App = (): JSX.Element => {
   const [participants, setParticipants] = React.useState<CallParticipant[]>([]);
   const [remoteStreams, setRemoteStreams] = React.useState<Map<string, MediaStream>>(new Map());
   const [isScreenSharing, setIsScreenSharing] = React.useState(false);
+  const [isJoinOnlyCall, setIsJoinOnlyCall] = React.useState(false);
+  const callTimeoutRef = React.useRef<number | null>(null);
   const meId = me?.user.id;
+
+  const clearCallTimeout = React.useCallback(() => {
+    if (callTimeoutRef.current) {
+      window.clearTimeout(callTimeoutRef.current);
+      callTimeoutRef.current = null;
+    }
+  }, []);
+
+  const emitMediaState = React.useCallback((patch?: Partial<CallParticipant>) => {
+    if (!meId || !callPeerIdRef.current) return;
+    const local = participants.find((p) => p.userId === meId);
+    socketService.emit('call:media-state', {
+      to: callPeerIdRef.current,
+      state: {
+        isMuted: patch?.isMuted ?? local?.isMuted ?? false,
+        isVideoEnabled: patch?.isVideoEnabled ?? local?.isVideoEnabled ?? false,
+        isScreenSharing: patch?.isScreenSharing ?? isScreenSharing,
+      },
+    });
+  }, [isScreenSharing, meId, participants]);
 
   React.useEffect(() => {
     if (!token || !me) return;
     socketService.connect(token);
 
-    const onIncoming = ({ from, fromName, fromAvatar, type, chatId }: any) => {
+    const onIncoming = ({ from, fromName, fromAvatar, type, chatId }: { from: string; fromName: string; fromAvatar?: string; type: CallType; chatId?: string }) => {
       setIncomingCall({ from, fromName, fromAvatar, type, chatId });
+      callPeerIdRef.current = from;
       setCallType(type);
       setIsCallActive(true);
       setIsCallConnected(false);
+      setIsJoinOnlyCall(false);
       setCallExpanded(true);
+      setIsJoinOnlyCall(true);
       setParticipants([
         { userId: from, name: fromName, avatarUrl: fromAvatar, isMuted: false, isVideoEnabled: type === 'video', isSpeaking: false, isRinging: true },
       ]);
     };
     const onAccepted = () => {
+      clearCallTimeout();
       setIsCallActive(true);
       setIsCallConnected(true);
+      setIsJoinOnlyCall(false);
       setParticipants(prev => prev.map(p => p.userId === callPeerIdRef.current ? { ...p, isRinging: false } : p));
     };
-    const onRejected = ({ from }: any) => {
+    const onRejected = ({ from }: { from?: string }) => {
+      clearCallTimeout();
       setNotice('Звонок отклонен');
+      setIncomingCall(null);
       setParticipants((prev) => {
         const localOnly = meId ? prev.filter((p) => p.userId === meId) : [];
         return localOnly;
@@ -344,12 +373,16 @@ const App = (): JSX.Element => {
       if (callPeerIdRef.current === from) callPeerIdRef.current = '';
       setIsScreenSharing(false);
       setIsCallConnected(false);
+      setIsJoinOnlyCall(false);
+      if (from) webrtcService.removePeer(from);
       if (!meId) {
         setIsCallActive(false);
         webrtcService.endAllCalls();
       }
     };
-    const onEnded = () => {
+    const onEnded = ({ from }: { from?: string }) => {
+      clearCallTimeout();
+      setIncomingCall(null);
       setParticipants((prev) => {
         const localOnly = meId ? prev.filter((p) => p.userId === meId) : [];
         if (localOnly.length > 0) {
@@ -362,12 +395,18 @@ const App = (): JSX.Element => {
       callPeerIdRef.current = '';
       setIsScreenSharing(false);
       setIsCallConnected(false);
+      setIsJoinOnlyCall(false);
+      if (from) webrtcService.removePeer(from);
       if (!meId) {
         webrtcService.endAllCalls();
         setIsCallActive(false);
       }
     };
-    const onSignal = ({ from, signal }: any) => {
+    const onMediaState = ({ from, state }: { from: string; state: Partial<CallParticipant> }) => {
+      setParticipants(prev => prev.map(p => p.userId === from ? { ...p, ...state } : p));
+    };
+
+    const onSignal = ({ from, signal }: { from: string; signal: unknown }) => {
       const signalType = (signal as { type?: string })?.type;
       if (!signalType) return;
       
@@ -385,6 +424,7 @@ const App = (): JSX.Element => {
     socketService.on('call:rejected', onRejected);
     socketService.on('call:ended', onEnded);
     socketService.on('signal', onSignal);
+    socketService.on('call:media-state', onMediaState);
     socketService.on('presence:update', (payload: Record<string, { status: PresenceStatus }>) => {
       const flat: Record<string, PresenceStatus> = {};
       Object.entries(payload).forEach(([id, val]) => { flat[id] = val.status; });
@@ -400,8 +440,9 @@ const App = (): JSX.Element => {
       socketService.off('call:rejected', onRejected);
       socketService.off('call:ended', onEnded);
       socketService.off('signal', onSignal);
+      socketService.off('call:media-state', onMediaState);
     };
-  }, [token, meId]);
+  }, [token, meId, clearCallTimeout]);
 
   React.useEffect(() => {
     if (!token || !me || !socketService.isConnected()) return;
@@ -821,6 +862,7 @@ const App = (): JSX.Element => {
       ]);
       setIsCallActive(true);
       setIsCallConnected(false);
+      setIsJoinOnlyCall(false);
       setCallExpanded(true);
       
       webrtcService.createPeer(peerId, true, stream, (signal) => {
@@ -828,10 +870,19 @@ const App = (): JSX.Element => {
       });
       
       socketService.emit('call:start', { to: peerId, type, chatId: activeChatId });
+      clearCallTimeout();
+      callTimeoutRef.current = window.setTimeout(() => {
+        setNotice('Друг не ответил за 30 секунд');
+        socketService.emit('call:end', { to: peerId });
+        webrtcService.removePeer(peerId);
+        setParticipants(prev => prev.filter(p => p.userId === me.user.id));
+        setIsCallConnected(false);
+        callPeerIdRef.current = '';
+      }, 30000);
       
-    } catch (error: any) {
+    } catch (error) {
       console.error('❌ Failed to start call:', error);
-      setNotice(`Ошибка звонка: ${error.message}`);
+      setNotice(`Ошибка звонка: ${(error as Error).message}`);
     }
   };
 
@@ -839,6 +890,7 @@ const App = (): JSX.Element => {
     if (!incomingCall) return;
     try {
       const callData = { ...incomingCall };
+      clearCallTimeout();
       setIncomingCall(null);
       const stream = await webrtcService.initLocalStream(callData.type === 'video');
       
@@ -856,6 +908,7 @@ const App = (): JSX.Element => {
       callPeerIdRef.current = callData.from;
       setIsCallActive(true);
       setIsCallConnected(true);
+      setIsJoinOnlyCall(false);
       setCallExpanded(true);
       
       setParticipants([
@@ -864,6 +917,7 @@ const App = (): JSX.Element => {
       ]);
       
       socketService.emit('call:accept', { from: callData.from });
+      socketService.emit('call:media-state', { to: callData.from, state: { isMuted: false, isVideoEnabled: callData.type === 'video', isScreenSharing: false } });
       
     } catch (error) {
       console.error('❌ Failed to accept call:', error);
@@ -873,6 +927,7 @@ const App = (): JSX.Element => {
   };
 
   const endCall = (): void => {
+    clearCallTimeout();
     if (callPeerIdRef.current) socketService.emit('call:end', { to: callPeerIdRef.current });
     webrtcService.endAllCalls();
     setIsCallActive(false);
@@ -881,20 +936,29 @@ const App = (): JSX.Element => {
     callPeerIdRef.current = '';
     setIsScreenSharing(false);
     setIsCallConnected(false);
+    setIsJoinOnlyCall(false);
   };
 
   const toggleMuteCall = (): void => {
     if (!me) return;
-    setParticipants(prev => prev.map(p => p.userId === me.user.id ? { ...p, isMuted: !p.isMuted } : p));
     const meP = participants.find(p => p.userId === me.user.id);
-    webrtcService.toggleAudio(Boolean(meP?.isMuted));
+    const nextMuted = !meP?.isMuted;
+    setParticipants(prev => prev.map(p => p.userId === me.user.id ? { ...p, isMuted: nextMuted } : p));
+    webrtcService.toggleAudio(!nextMuted);
+    emitMediaState({ isMuted: nextMuted });
   };
 
-  const toggleVideoCall = (): void => {
+  const toggleVideoCall = async (): Promise<void> => {
     if (!me) return;
-    setParticipants(prev => prev.map(p => p.userId === me.user.id ? { ...p, isVideoEnabled: !p.isVideoEnabled } : p));
     const meP = participants.find(p => p.userId === me.user.id);
-    webrtcService.toggleVideo(!meP?.isVideoEnabled);
+    const nextEnabled = !meP?.isVideoEnabled;
+    try {
+      await webrtcService.setCameraEnabled(nextEnabled);
+      setParticipants(prev => prev.map(p => p.userId === me.user.id ? { ...p, isVideoEnabled: nextEnabled } : p));
+      emitMediaState({ isVideoEnabled: nextEnabled });
+    } catch (error) {
+      setNotice((error as Error).message);
+    }
   };
 
   const toggleScreenShare = async (): Promise<void> => {
@@ -909,6 +973,8 @@ const App = (): JSX.Element => {
         if (screenStream) {
           await webrtcService.replaceLocalStream(screenStream, true);
           setIsScreenSharing(true);
+          setParticipants(prev => prev.map(p => p.userId === me.user.id ? { ...p, isScreenSharing: true } : p));
+          emitMediaState({ isScreenSharing: true });
           setNotice('Демонстрация экрана начата');
         } else {
           setNotice('Не удалось начать демонстрацию экрана');
@@ -916,6 +982,8 @@ const App = (): JSX.Element => {
       } else {
         await webrtcService.stopScreenShare();
         setIsScreenSharing(false);
+        setParticipants(prev => prev.map(p => p.userId === me.user.id ? { ...p, isScreenSharing: false } : p));
+        emitMediaState({ isScreenSharing: false });
         setNotice('Демонстрация экрана остановлена');
       }
     } catch (error) {
@@ -1057,6 +1125,8 @@ const App = (): JSX.Element => {
                 remoteStreams={remoteStreams}
                 onToggleScreenShare={toggleScreenShare}
                 isScreenSharing={isScreenSharing}
+                isJoinOnlyCall={isJoinOnlyCall}
+                onJoinCall={acceptIncomingCall}
                 refreshData={refreshData}
               />
             )}
@@ -1155,7 +1225,10 @@ const App = (): JSX.Element => {
         onReject={() => {
           if (incomingCall) {
             socketService.emit('call:reject', { from: incomingCall.from });
+            clearCallTimeout();
             setIncomingCall(null);
+            setIsJoinOnlyCall(false);
+            setIsCallActive(false);
             setNotice('Звонок отклонен');
           }
         }}

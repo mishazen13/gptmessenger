@@ -28,6 +28,9 @@ class WebRTCService {
   private pendingOffers: Map<string, any> = new Map();
   private audioElements: Map<string, HTMLAudioElement> = new Map();
   private isScreenSharing: boolean = false;
+  private screenStream: MediaStream | null = null;
+  private cameraTrackId: string | null = null;
+  private screenTrackId: string | null = null;
 
   private getMediaErrorMessage(): string {
     if (typeof navigator === 'undefined' || typeof window === 'undefined') {
@@ -95,6 +98,7 @@ class WebRTCService {
       if (!this.cameraStream && videoEnabled) {
         this.cameraStream = this.localStream.clone();
       }
+      this.cameraTrackId = this.localStream.getVideoTracks()[0]?.id ?? this.cameraTrackId;
       
       // Убеждаемся, что звук включен
       this.localStream.getAudioTracks().forEach(track => {
@@ -123,13 +127,41 @@ class WebRTCService {
     }
   }
 
-  toggleVideo(enabled: boolean): void {
-    if (this.localStream && !this.isScreenSharing) {
-      this.localStream.getVideoTracks().forEach(track => {
-        track.enabled = enabled;
-        console.log(`📹 Video ${enabled ? 'enabled' : 'disabled'}`);
+  async setCameraEnabled(enabled: boolean): Promise<MediaStream | null> {
+    if (!this.localStream) {
+      this.localStream = await this.requestUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 48000,
+          channelCount: 1
+        },
+        video: false
       });
     }
+
+    const currentCameraTrack = this.localStream.getVideoTracks().find(track => track.id === this.cameraTrackId) ?? null;
+    if (enabled && !currentCameraTrack) {
+      const cameraOnlyStream = await this.requestUserMedia({
+        audio: false,
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+      });
+      const cameraTrack = cameraOnlyStream.getVideoTracks()[0];
+      if (cameraTrack) {
+        this.cameraTrackId = cameraTrack.id;
+        this.localStream.addTrack(cameraTrack);
+      }
+    } else if (currentCameraTrack) {
+      currentCameraTrack.enabled = enabled;
+    }
+
+    for (const [, peer] of this.peers) this.updatePeerStream(peer, this.localStream);
+    return this.localStream;
+  }
+
+  toggleVideo(enabled: boolean): void {
+    void this.setCameraEnabled(enabled);
   }
 
   // Демонстрация экрана
@@ -138,22 +170,18 @@ class WebRTCService {
       if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getDisplayMedia) {
         throw new Error(this.getMediaErrorMessage());
       }
-
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: true
-      });
-      
-      // Добавляем аудио дорожку из микрофона
-      if (this.localStream) {
-        const audioTrack = this.localStream.getAudioTracks()[0];
-        if (audioTrack) {
-          screenStream.addTrack(audioTrack);
-        }
+      if (!this.localStream) await this.initLocalStream(false);
+      this.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const screenTrack = this.screenStream.getVideoTracks()[0];
+      if (screenTrack && this.localStream) {
+        this.screenTrackId = screenTrack.id;
+        this.localStream.addTrack(screenTrack);
+        screenTrack.onended = () => { void this.stopScreenShare(); };
       }
-      
+      this.isScreenSharing = true;
+      for (const [, peer] of this.peers) if (this.localStream) this.updatePeerStream(peer, this.localStream);
       console.log('🖥️ Screen share started');
-      return screenStream;
+      return this.localStream;
     } catch (error) {
       console.error('❌ Failed to start screen share:', error);
       return null;
@@ -161,116 +189,46 @@ class WebRTCService {
   }
 
   async replaceLocalStream(newStream: MediaStream, isSharing: boolean): Promise<void> {
-    // Сохраняем старый поток если нужно вернуться
-    if (!this.isScreenSharing && isSharing && this.cameraStream) {
-      // Уже есть сохраненный поток
-    } else if (isSharing && this.localStream && !this.cameraStream) {
-      this.cameraStream = this.localStream.clone();
-    }
-    
-    // Обновляем локальный поток
     this.localStream = newStream;
     this.isScreenSharing = isSharing;
-    console.log(`🖥️ Local stream replaced, screen sharing: ${isSharing}`);
-    
-    // Обновляем все пиры с новым потоком
-    for (const [userId, peer] of this.peers) {
-      this.updatePeerStream(peer, newStream);
-    }
+    for (const [, peer] of this.peers) this.updatePeerStream(peer, newStream);
   }
 
   async stopScreenShare(): Promise<void> {
-    if (this.cameraStream && this.isScreenSharing) {
-      // Останавливаем экранный поток
-      if (this.localStream) {
-        this.localStream.getVideoTracks().forEach(track => {
-          if (track.readyState === 'live') {
-            track.stop();
-          }
-        });
-      }
-      
-      // Возвращаемся к камере
-      this.localStream = this.cameraStream;
-      this.isScreenSharing = false;
-      
-      // Обновляем все пиры обратно на камеру
-      for (const [userId, peer] of this.peers) {
-        this.updatePeerStream(peer, this.cameraStream);
-      }
-      
-      console.log('🖥️ Screen share stopped, returned to camera');
-    }
+    if (!this.localStream || !this.isScreenSharing) return;
+    const screenTracks = this.screenStream?.getVideoTracks() ?? [];
+    screenTracks.forEach(track => {
+      this.localStream?.removeTrack(track);
+      if (track.readyState === 'live') track.stop();
+    });
+    this.screenStream = null;
+    this.screenTrackId = null;
+    this.isScreenSharing = false;
+    for (const [, peer] of this.peers) this.updatePeerStream(peer, this.localStream);
+    console.log('🖥️ Screen share stopped');
   }
 
   private updatePeerStream(peer: Peer.Instance, stream: MediaStream): void {
     try {
-      // Получаем видео трек
-      const videoTrack = stream.getVideoTracks()[0];
-      if (!videoTrack) return;
-      
-      // Находим sender для видео
       const rtcpPeer = (peer as Peer.Instance & { _pc?: RTCPeerConnection })._pc;
-      if (rtcpPeer) {
-        const senders = rtcpPeer.getSenders();
-        const videoSender = senders.find(s => s.track?.kind === 'video');
-        if (videoSender && videoTrack) {
-          videoSender.replaceTrack(videoTrack)
-            .then(() => {
-              console.log('✅ Video track replaced');
-            })
-            .catch(err => {
-              console.error('❌ Failed to replace track:', err);
-              // Если replaceTrack не работает, пересоздаем peer
-              this.recreatePeer(peer, stream);
-            });
-        } else if (videoTrack) {
-          peer.addStream(stream);
+      if (!rtcpPeer) return;
+      const senders = rtcpPeer.getSenders();
+      stream.getTracks().forEach(track => {
+        const sameSender = senders.find(sender => sender.track?.id === track.id);
+        if (sameSender) return;
+        const kindSender = senders.find(sender => sender.track?.kind === track.kind && sender.track.readyState !== 'live');
+        if (kindSender) {
+          kindSender.replaceTrack(track).catch(err => console.error('❌ Failed to replace track:', err));
+          return;
         }
-      }
+        try {
+          peer.addTrack(track, stream);
+        } catch (error) {
+          console.warn('⚠️ Track already exists or cannot be added:', error);
+        }
+      });
     } catch (error) {
       console.error('❌ Error updating peer stream:', error);
-    }
-  }
-
-  private recreatePeer(peer: Peer.Instance, stream: MediaStream): void {
-    // Находим userId для этого peer
-    let userId: string | null = null;
-    for (const [id, p] of this.peers) {
-      if (p === peer) {
-        userId = id;
-        break;
-      }
-    }
-    
-    if (userId) {
-      console.log('🔄 Recreating peer for', userId);
-      const oldOnSignal = (peer as Peer.Instance & { _events?: { signal?: (signal: unknown) => void } })._events?.signal;
-      peer.destroy();
-      this.peers.delete(userId);
-      
-      // Создаем новый peer с новым потоком
-      const newPeer = new Peer({
-        initiator: false, // будет инициирован удаленной стороной
-        stream,
-        trickle: true,
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-          ]
-        }
-      });
-      
-      newPeer.on('signal', (signal) => {
-        if (oldOnSignal) {
-          oldOnSignal(signal);
-        }
-      });
-      
-      this.peers.set(userId, newPeer);
     }
   }
 
@@ -344,10 +302,6 @@ class WebRTCService {
       console.log(`⚠️ Removing existing peer for ${userId}`);
       this.removePeer(userId);
     }
-
-    stream.getTracks().forEach(track => {
-      track.enabled = true;
-    });
 
     const peer = new Peer({
       initiator,
@@ -457,14 +411,14 @@ class WebRTCService {
   endAllCalls(): void {
     console.log('🔚 Ending all calls');
     
-    this.audioElements.forEach((audio, userId) => {
+    this.audioElements.forEach((audio) => {
       audio.pause();
       audio.srcObject = null;
       document.body.removeChild(audio);
     });
     this.audioElements.clear();
     
-    this.peers.forEach((peer, userId) => {
+    this.peers.forEach((peer) => {
       peer.destroy();
     });
     this.peers.clear();
@@ -480,6 +434,13 @@ class WebRTCService {
     if (this.cameraStream) {
       this.cameraStream = null;
     }
+
+    if (this.screenStream) {
+      this.screenStream.getTracks().forEach(track => track.stop());
+      this.screenStream = null;
+    }
+    this.screenTrackId = null;
+    this.cameraTrackId = null;
     
     this.isScreenSharing = false;
     this.onCallEndCallbacks.forEach(cb => cb());
