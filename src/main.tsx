@@ -83,7 +83,7 @@ const savePrefs = (prefs: PrefMap): void => {
   localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
 };
 
-const API_BASE = 'http://192.168.1.104:4000';
+const API_BASE = 'http://192.168.0.100:4000';
 
 const getFullUrl = (urlPath: string | null | undefined): string | undefined => {
   if (!urlPath) return undefined;

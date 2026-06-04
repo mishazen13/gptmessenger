@@ -372,7 +372,7 @@ const MessageBubble = ({ message, mine, sender, repliedMessage, repliedSender, t
       
       {/* Вложения (если есть текст) */}
       {message.text && message.attachments && message.attachments.length > 0 && (
-        <div className="px-3 md:px-4 pb-2 flex flex-col gap-1">
+        <div className=" flex flex-col gap-1">
           {message.attachments.map((att: MessageAttachment) => {
             return <MessageAttachmentPreview key={att.id} attachment={att} theme={theme} />;
           })}
